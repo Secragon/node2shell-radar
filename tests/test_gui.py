@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from threading import Event
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -157,6 +158,56 @@ class GuiOptionsTests(unittest.TestCase):
         self.assertEqual(exported["results"][0]["Address"], asset["url"])
         window.search.setText("absent")
         self.assertEqual(window.visible_result_rows(), [])
+
+    def test_scan_buttons_show_start_pause_resume_and_stop_states(self):
+        class FakeSignal:
+            def connect(self, callback):
+                pass
+
+        class FakeThread:
+            def __init__(self, options, parent):
+                self.running = True
+                self.control = type("Control", (), {"paused": Event(), "stopped": Event()})()
+                self.event = FakeSignal()
+                self.finished = FakeSignal()
+
+            def start(self):
+                pass
+
+            def isRunning(self):
+                return self.running
+
+        with patch("radar.gui.ScanThread", FakeThread):
+            self.window.start_button.click()
+        self.assertEqual(self.window.start_button.text(), "Scanning…")
+        self.assertFalse(self.window.start_button.isEnabled())
+        self.assertTrue(self.window.pause_button.isEnabled())
+        self.assertTrue(self.window.stop_button.isEnabled())
+
+        self.window.pause_button.click()
+        self.assertEqual(self.window.start_button.text(), "Paused")
+        self.assertEqual(self.window.pause_button.text(), "Resume")
+        self.assertTrue(self.window.pause_button.isChecked())
+        self.assertTrue(self.window.thread.control.paused.is_set())
+
+        self.window.pause_button.click()
+        self.assertEqual(self.window.start_button.text(), "Scanning…")
+        self.assertEqual(self.window.pause_button.text(), "Pause")
+        self.assertFalse(self.window.pause_button.isChecked())
+        self.assertFalse(self.window.thread.control.paused.is_set())
+
+        self.window.stop_button.click()
+        self.assertEqual(self.window.start_button.text(), "Stopping…")
+        self.assertEqual(self.window.stop_button.text(), "Stopping…")
+        self.assertFalse(self.window.pause_button.isEnabled())
+        self.assertFalse(self.window.stop_button.isEnabled())
+        self.assertTrue(self.window.thread.control.stopped.is_set())
+
+        self.window.thread.running = False
+        self.window.thread_done()
+        self.assertEqual(self.window.start_button.text(), "Scan")
+        self.assertEqual(self.window.stop_button.text(), "Stop")
+        self.assertTrue(self.window.start_button.isEnabled())
 
 if __name__ == "__main__":
     unittest.main()

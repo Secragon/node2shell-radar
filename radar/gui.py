@@ -41,6 +41,18 @@ QPushButton:hover { background: #d9ece9; }
 QPushButton:disabled { color: #a2adb3; background: #edf1f2; border-color: #dce6e7; }
 QPushButton#primary { background: #267f84; color: #ffffff; border: none; font-weight: 700; }
 QPushButton#primary:hover { background: #1d6c72; }
+QPushButton#primary:disabled { background: #cce4e3; color: #285b62;
+                               border: 1px solid #9dc9c8; }
+QPushButton#pauseButton { background: #e9f3f2; color: #285b62; }
+QPushButton#pauseButton:checked { background: #fff0cc; color: #785618;
+                                   border: 1px solid #e6c671; }
+QPushButton#pauseButton:disabled { background: #edf1f2; color: #a2adb3;
+                                    border: 1px solid #dce6e7; }
+QPushButton#stopButton { background: #fbe9e6; color: #a33c35;
+                          border: 1px solid #eec7c2; }
+QPushButton#stopButton:hover { background: #f7d9d4; }
+QPushButton#stopButton:disabled { background: #edf1f2; color: #a2adb3;
+                                   border: 1px solid #dce6e7; }
 QPushButton#advancedButton { background: #e4f1f1; color: #315e66; border-color: #c9e1e1; }
 QCheckBox { spacing: 7px; }
 QCheckBox::indicator { width: 16px; height: 16px; }
@@ -257,10 +269,13 @@ class MainWindow(QMainWindow):
         self.start_button.clicked.connect(self.start_scan)
         actions.addWidget(self.start_button)
         self.pause_button = QPushButton("Pause")
+        self.pause_button.setObjectName("pauseButton")
+        self.pause_button.setCheckable(True)
         self.pause_button.setEnabled(False)
         self.pause_button.clicked.connect(self.pause_scan)
         actions.addWidget(self.pause_button)
         self.stop_button = QPushButton("Stop")
+        self.stop_button.setObjectName("stopButton")
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.stop_scan)
         actions.addWidget(self.stop_button)
@@ -427,8 +442,12 @@ class MainWindow(QMainWindow):
         self.journal.clear()
         self.metric_label.setText("Node.js candidates 0/0")
         self.progress.setValue(0)
+        self.start_button.setText("Scanning…")
         self.start_button.setEnabled(False)
+        self.pause_button.setChecked(False)
+        self.pause_button.setText("Pause")
         self.pause_button.setEnabled(True)
+        self.stop_button.setText("Stop")
         self.stop_button.setEnabled(True)
         self.status.setText("Starting discovery…")
         self.thread = ScanThread(options, self)
@@ -441,25 +460,37 @@ class MainWindow(QMainWindow):
             return
         if self.thread.control.paused.is_set():
             self.thread.control.paused.clear()
+            self.pause_button.setChecked(False)
             self.pause_button.setText("Pause")
+            self.start_button.setText("Scanning…")
             self.status.setText("Resuming…")
         else:
             self.thread.control.paused.set()
+            self.pause_button.setChecked(True)
             self.pause_button.setText("Resume")
+            self.start_button.setText("Paused")
             self.status.setText("Pausing after the current request…")
 
     def stop_scan(self):
         if self.thread and self.thread.isRunning():
             self.thread.control.stopped.set()
             self.thread.control.paused.clear()
+            self.start_button.setText("Stopping…")
+            self.pause_button.setChecked(False)
+            self.pause_button.setText("Pause")
+            self.pause_button.setEnabled(False)
+            self.stop_button.setText("Stopping…")
             self.stop_button.setEnabled(False)
             self.status.setText("Stopping after the current request…")
 
     def thread_done(self):
+        self.start_button.setText("Scan")
         self.start_button.setEnabled(True)
         self.pause_button.setEnabled(False)
+        self.pause_button.setChecked(False)
         self.pause_button.setText("Pause")
         self.stop_button.setEnabled(False)
+        self.stop_button.setText("Stop")
         self.history_button.setEnabled(True)
         if self._close_when_done:
             QTimer.singleShot(0, self.close)
