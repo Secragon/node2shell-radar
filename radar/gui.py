@@ -613,7 +613,8 @@ class MainWindow(QMainWindow):
                       "▸ " if expandable else "")
             node_version = asset.get("version")
             framework_versions = asset.get("technology_versions") or {}
-            framework_name = next((name for name in ("Next.js", "Nuxt", "SvelteKit", "Remix", "Gatsby")
+            framework_name = next((name for name in ("Next.js", "Nuxt", "Remix", "React Router",
+                                                  "SvelteKit", "Astro", "Gatsby", "RedwoodJS", "SolidStart")
                                    if framework_versions.get(name)), None)
             framework_version = framework_versions.get(framework_name) if framework_name else None
             version_label = (f"Node.js {node_version}" if node_version else

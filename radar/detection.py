@@ -11,7 +11,7 @@ from radar.site_identity import describe_site
 
 NODE_VERSION = re.compile(r"\b(?:node(?:\.js)?|io\.js)[/\s:v-]+v?(\d+\.\d+\.\d+(?:[-+~.a-zA-Z0-9]*)?)\b", re.I)
 FRAMEWORK_VERSION = re.compile(
-    r"\b(Next\.js|Nuxt(?:\.js)?|SvelteKit|Remix|Gatsby)\b"
+    r"\b(Next\.js|Nuxt(?:\.js)?|SvelteKit|Remix|React Router|Gatsby|Astro|RedwoodJS|SolidStart)\b"
     r"(?:[/\s]+v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?))?", re.I)
 NEXT_EXPORTED_VERSION = re.compile(r"\bversion\s*:\s*function\(\)\s*\{\s*return\s+([a-zA-Z_$][\w$]*)\s*\}")
 PROXIES = (("Cloudflare", "cf-ray"), ("CloudFront", "x-amz-cf-id"),
@@ -37,7 +37,20 @@ class Page(HTMLParser):
             self.markers.add("Next.js")
         if tag == "script" and attrs.get("id") == "__NUXT_DATA__":
             self.markers.add("Nuxt")
-        if any(name.startswith("data-sveltekit-") for name in attrs):
+        if tag == "div" and (attrs.get("id") or "").startswith("__nuxt"):
+            self.markers.add("Nuxt")
+        if tag == "div" and attrs.get("id") == "___gatsby":
+            self.markers.add("Gatsby")
+        if tag == "style" and attrs.get("id") == "gatsby-inlined-css":
+            self.markers.add("Gatsby")
+        if tag == "div" and attrs.get("id") == "redwood-app":
+            self.markers.add("RedwoodJS")
+        if tag == "link" and "__meteor-css__" in (attrs.get("class") or "").split():
+            self.markers.add("Meteor")
+        if tag in ("astro-island", "astro-slot") or any(name.startswith("data-astro-cid-") for name in attrs):
+            self.markers.add("Astro")
+        if attrs.get("id") == "svelte-announcer" or any(
+                name.startswith("data-sveltekit-") or name == "sveltekit:prefetch" for name in attrs):
             self.markers.add("SvelteKit")
         if tag in ("script", "link", "img"):
             value = attrs.get("src") or attrs.get("href")
@@ -59,13 +72,21 @@ class Page(HTMLParser):
                 self.markers.add("Next.js")
             if "window.__NUXT__" in data:
                 self.markers.add("Nuxt")
-            if "__remixContext" in data:
+            if any(marker in data for marker in ("__remixContext", "__remixManifest", "__remixRouteModules")):
                 self.markers.add("Remix")
+            if any(marker in data for marker in ("__reactRouterContext", "__reactRouterManifest")):
+                self.markers.add("React Router")
+            if "__sveltekit_" in data:
+                self.markers.add("SvelteKit")
+            if "window.___webpackCompilationHash" in data:
+                self.markers.add("Gatsby")
 
 
 def framework_name(raw):
     return {"next.js": "Next.js", "nuxt": "Nuxt", "nuxt.js": "Nuxt",
-            "sveltekit": "SvelteKit", "remix": "Remix", "gatsby": "Gatsby"}[raw.lower()]
+            "sveltekit": "SvelteKit", "remix": "Remix", "react router": "React Router",
+            "gatsby": "Gatsby", "astro": "Astro", "redwoodjs": "RedwoodJS",
+            "solidstart": "SolidStart"}[raw.lower()]
 
 
 def _authority(url):
@@ -141,10 +162,18 @@ def observe(response):
                 bare = re.fullmatch(r"v?(\d+\.\d+\.\d+(?:[-+~.a-zA-Z0-9]*)?)", value.strip())
                 if bare:
                     versions.add(bare.group(1))
-        for name in ("Express", "Koa", "NestJS", "Fastify", "Hapi"):
-            if re.search(rf"\b{re.escape(name)}\b", value, re.I):
+        for name, pattern in (("Express", r"\bExpress\b"), ("Koa", r"\bKoa\b"),
+                              ("NestJS", r"\bNestJS\b"), ("Fastify", r"\bFastify\b"),
+                              ("Hapi", r"\bHapi\b"), ("AdonisJS", r"\bAdonisJS\b"),
+                              ("Sails.js", r"\bSails(?:\.js)?\b"),
+                              ("Meteor", r"\bMeteor\b"), ("Hono", r"\bHono\b")):
+            if re.search(pattern, value, re.I):
                 technologies.add(name)
-                add("framework_header", key, f"{name} response header", "medium")
+                add("framework_header", key, f"{name} response header; Node.js runtime unconfirmed",
+                    "weak" if name == "Hono" else "medium")
+        if key == "x-powered-by" and re.fullmatch(r"Nest", value.strip(), re.I):
+            technologies.add("NestJS")
+            add("framework_header", key, "NestJS response header; Node.js runtime unconfirmed", "medium")
         for match in FRAMEWORK_VERSION.finditer(value):
             name = framework_name(match.group(1))
             technologies.add(name)
@@ -152,15 +181,26 @@ def observe(response):
                 technology_versions[name] = match.group(2)
             # A framework header is stronger than a static HTML marker, but
             # still does not prove which runtime serves the response.
-            strength = "medium" if key == "x-powered-by" and name != "Gatsby" else "weak"
+            strength = "medium" if key == "x-powered-by" and name in (
+                "Next.js", "Nuxt", "SvelteKit", "Remix") else "weak"
             add("framework_header", key, f"{name} response header; Node.js runtime unconfirmed", strength)
     if headers.get("x-nextjs-cache") or headers.get("x-nextjs-prerender"):
         technologies.add("Next.js")
         add("framework_header", "x-nextjs-*", "Next.js header; runtime may be elsewhere", "weak")
     cookie_header = headers.get("set-cookie", "")
-    for cookie in re.findall(r"(?:^|[,;]\s*)([!#$%&'*+.^_`|~\w-]+)=", cookie_header):
-        if cookie.lower() in ("connect.sid", "express:sess", "koa:sess"):
+    for cookie in re.findall(r"(?:^|[,;]\s*)([!#$%&'*+.^_`|~\w:-]+)=", cookie_header):
+        lower = cookie.lower()
+        if lower in ("connect.sid", "express:sess", "koa:sess", "sails.sid",
+                     "adonis-session", "adonis-session-values"):
+            product = {"express:sess": "Express", "koa:sess": "Koa",
+                       "sails.sid": "Sails.js", "adonis-session": "AdonisJS",
+                       "adonis-session-values": "AdonisJS"}.get(lower)
+            if product:
+                technologies.add(product)
             add("cookie_name", "set-cookie", f"{cookie} cookie name (value omitted)", "medium")
+        elif lower == "next_locale":
+            technologies.add("Next.js")
+            add("cookie_name", "set-cookie", "NEXT_LOCALE cookie name (value omitted)", "weak")
 
     page = Page()
     if "html" in headers.get("content-type", "").lower() and response.text:
@@ -182,8 +222,12 @@ def observe(response):
     if any("/_nuxt/" in path for path in page.paths) or "Nuxt" in page.markers:
         technologies.add("Nuxt")
         add("frontend", "HTML", "Nuxt assets; static hosting is possible", "weak")
-    for product in ("Remix", "SvelteKit"):
-        if product in page.markers:
+    asset_markers = {"SvelteKit": "/_app/immutable/", "Astro": "/_astro/",
+                     "Gatsby": "/page-data/app-data.json"}
+    for product in ("Remix", "React Router", "SvelteKit", "Astro", "Gatsby",
+                    "Meteor", "RedwoodJS"):
+        asset_marker = asset_markers.get(product)
+        if product in page.markers or (asset_marker and any(asset_marker in path for path in page.paths)):
             technologies.add(product)
             add("frontend", "HTML", f"{product} markup; static or alternate hosting is possible", "weak")
 

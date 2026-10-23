@@ -90,7 +90,12 @@ class DetectionTests(unittest.TestCase):
             ("Next.js", '<script>self.__next_f.push([1,"payload"])</script>'),
             ("Nuxt", '<script id="__NUXT_DATA__" type="application/json">[]</script>'),
             ("Remix", '<script>window.__remixContext={};</script>'),
+            ("React Router", '<script>window.__reactRouterContext={};</script>'),
             ("SvelteKit", '<a href="/about" data-sveltekit-preload-data="hover">About</a>'),
+            ("Astro", '<astro-island component-url="/widget.js"></astro-island>'),
+            ("Gatsby", '<div id="___gatsby"></div>'),
+            ("Meteor", '<link class="__meteor-css__" rel="stylesheet" href="/main.css">'),
+            ("RedwoodJS", '<div id="redwood-app"></div>'),
         )
         for framework, html in cases:
             with self.subTest(framework=framework):
@@ -109,8 +114,44 @@ class DetectionTests(unittest.TestCase):
 
     def test_framework_name_in_visible_documentation_is_not_a_marker(self):
         found = fingerprint(response(text='<pre>self.__next_f.push; __NUXT_DATA__; '
-                                          'data-sveltekit-preload-data</pre>'), ["example.test"])
+                                          'data-sveltekit-preload-data; __reactRouterContext; '
+                                          'astro-island; ___gatsby</pre>'), ["example.test"])
         self.assertEqual(found["node"], "NOT_ESTABLISHED")
+
+    def test_specific_backend_cookies_are_candidates_without_exposing_values(self):
+        cases = (("koa:sess", "Koa"), ("sails.sid", "Sails.js"),
+                 ("adonis-session", "AdonisJS"))
+        for cookie, framework in cases:
+            with self.subTest(cookie=cookie):
+                found = fingerprint(response(headers={"set-cookie": f"{cookie}=secret-token; Path=/"}),
+                                    ["example.test"])
+                self.assertEqual(found["node"], "LIKELY")
+                self.assertIn(framework, found["technologies"])
+                self.assertNotIn("secret-token", repr(found["evidence"]))
+
+    def test_multi_runtime_framework_does_not_imply_node_runtime(self):
+        found = fingerprint(response(headers={"x-powered-by": "Hono"}), ["example.test"])
+        self.assertEqual(found["node"], "POSSIBLE")
+        self.assertIn("Hono", found["technologies"])
+        self.assertIsNone(found["version"])
+
+    def test_explicit_nest_header_is_a_node_candidate(self):
+        found = fingerprint(response(headers={"x-powered-by": "Nest"}), ["example.test"])
+        self.assertEqual(found["node"], "LIKELY")
+        self.assertIn("NestJS", found["technologies"])
+
+    def test_frontend_library_alone_does_not_imply_node(self):
+        found = fingerprint(response(text='<div id="app" ng-version="20.0.0" q:version="1.0.0">'
+                                          '<script src="/react.js"></script>'
+                                          '<script>_$HY.init("root")</script></div>'), ["example.test"])
+        self.assertEqual(found["node"], "NOT_ESTABLISHED")
+
+    def test_astro_generator_version_is_not_a_node_version(self):
+        found = fingerprint(response(text='<meta name="generator" content="Astro v5.2.1">'),
+                            ["example.test"])
+        self.assertEqual(found["technology_versions"], {"Astro": "5.2.1"})
+        self.assertIsNone(found["version"])
+        self.assertEqual(found["node"], "POSSIBLE")
 
     def test_framework_header_version_is_not_node_version(self):
         found = fingerprint(response(headers={"x-powered-by": "Nuxt 4.1.2"}), ["example.test"])

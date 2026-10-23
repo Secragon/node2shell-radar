@@ -18,7 +18,7 @@ Brotli probe has been validated; it does not send traffic or affect verdicts.
 ## What a scan does
 
 1. **Find websites.** Public subdomain sources, common DNS names and TLS certificate names are enabled at launch. Each name is resolved and checked over HTTP or HTTPS before it counts as reached. Extra ports, per-IP checks and bounded site crawling are separate options.
-2. **Recognize Node.js clues.** A direct Node.js response header is stronger evidence than an Express or Koa header. HTML and response-header markers identify Next.js, Nuxt, Remix and SvelteKit candidates; their pages may be static or use another runtime, so framework evidence alone does not confirm a running Node.js service. A reported framework version is shown separately from the Node.js runtime version.
+2. **Recognize Node.js clues.** A direct Node.js response header is stronger evidence than a framework header. Passive headers, cookies and HTML identify candidates across server and full-stack frameworks, including Express, Next.js, Nuxt, Remix, React Router, SvelteKit, Astro and Gatsby. Their pages may be static or use another runtime, so framework evidence alone does not confirm a running Node.js service. A reported framework version is shown separately from the Node.js runtime version.
 3. **Assess version evidence.** A Node.js version reported over HTTP is compared with the upstream security releases. Missing, conflicting or vendor-specific versions stay unconfirmed.
 4. **Review the rest.** After completion, *Show other websites* reveals reached sites without Node.js runtime evidence. Checked addresses and evidence remain in the saved session; JSON/CSV export contains the currently visible result rows.
 
