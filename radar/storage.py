@@ -264,6 +264,16 @@ def grouped_websites(assets):
         shown["technology_versions"] = {name: next(iter(values)) for name, values in technology_versions.items()
                                         if len(values) == 1}
         shown["brotli_response"] = any(item.get("brotli_response") for item in members)
+        active_checks = []
+        for item in members:
+            check = item.get("active_check")
+            if check and check not in active_checks:
+                active_checks.append(check)
+        active_rank = {"Skipped": 0, "Inconclusive": 1, "Rejected here": 2, "Parser observed": 3}
+        shown["active_checks"] = active_checks
+        if active_checks:
+            shown["active_check"] = max(active_checks,
+                                        key=lambda check: active_rank.get(check.get("status"), -1))
         shown["proxy"] = sorted({name for item in members for name in item.get("proxy", ())})
         shown["evidence"] = []
         for item in members:
@@ -279,7 +289,8 @@ def export_report(path, run, assets):
     if path.suffix.lower() == ".csv":
         columns = ["url", "site_url", "final_url", "host", "connect_ip", "ips", "source",
                    "http_status", "node", "confidence", "version",
-                   "reported_versions", "technologies", "technology_versions", "brotli_response", "verdict",
+                   "reported_versions", "technologies", "technology_versions", "brotli_response",
+                   "active_check", "verdict",
                    "verdict_reason", "proxy", "error", "evidence", "dns", "crawl"]
         with path.open("w", encoding="utf-8-sig", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=columns)

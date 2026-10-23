@@ -12,8 +12,11 @@ options** exposes editable DNS names, deeper DNS checks, certificate names,
 site crawling, per-IP checks, TLS verification, concurrency, timeout, and
 request interval.
 Additional web ports can be edited on the main screen.
-The active-check control is visible but unavailable until a Node.js-specific
-Brotli probe has been validated; it does not send traffic or affect verdicts.
+The optional active check sends three small `OPTIONS` requests to candidate sites.
+It uses complete, valid Brotli streams to compare JSON parsing behavior. A
+positive result means Brotli request parsing was observed on that path; it does
+not prove which process decoded the body or whether its Brotli library is
+vulnerable. The check does not change the version-based verdict.
 
 ## What a scan does
 

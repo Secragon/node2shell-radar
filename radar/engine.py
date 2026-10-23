@@ -5,6 +5,7 @@ import threading
 import uuid
 from urllib.parse import urlsplit
 
+from radar.active import check_brotli_json
 from radar.crawl import crawl_pages
 from radar.detection import fingerprint, next_script_urls, next_version_from_script
 from radar.discovery import discover, resolve_details
@@ -105,6 +106,7 @@ async def run_scan(options, control, emit, transport=None):
                 "wildcard_candidates": 0, "wildcard_http_matches": 0,
                 "wildcard_tcp_skipped": 0, "crawl_partial": 0, "sources": []}
     completed = 0
+    active_tasks = {}
     try:
         await control.checkpoint()
         if not options.all_addresses:
@@ -203,6 +205,21 @@ async def run_scan(options, control, emit, transport=None):
                 await enrich_next_version(item, response, network)
             return item
 
+        async def inspect_active(item, response):
+            if not options.active_check:
+                return
+            if (item.get("wildcard_http_match") or item.get("external_redirect") or
+                    item.get("node") not in ("DETECTED", "LIKELY", "POSSIBLE") or
+                    item.get("http_status") not in (200, 401, 403)):
+                item["active_check"] = {"status": "Skipped", "reason":
+                                        "No in-scope Node.js candidate page was available for the request check."}
+                return
+            key = (response.url, item.get("connect_ip"))
+            if key not in active_tasks:
+                active_tasks[key] = asyncio.create_task(
+                    check_brotli_json(network, response.url, item.get("connect_ip")))
+            item["active_check"] = await active_tasks[key]
+
         async def worker():
             nonlocal completed
             while not queue.empty():
@@ -217,6 +234,7 @@ async def run_scan(options, control, emit, transport=None):
                     else:
                         response = await network.request("GET", item["url"])
                     await inspect_response(item, response)
+                    await inspect_active(item, response)
                     if not item.get("wildcard_http_match") and options.crawl and response.status == 200:
                         pages, report = await crawl_pages(network, response, options.max_pages, item["connect_ip"])
                         item["crawl"] = report

@@ -197,10 +197,9 @@ class MainWindow(QMainWindow):
             "Read the normal HTTP response for Node.js runtime, framework and version indicators.",
             "This is the standard passive detection and is always part of a scan.")
         self.passive_check.setEnabled(False)
-        self.active_check = self._option(detection_layout, "Active check if unclear", False,
-            "A Node.js-specific Brotli decoder probe requires separate validation before it can assess a remote process.",
-            "This check is not available yet. Selecting it will not send a probe or change the verdict.")
-        self.active_check.setEnabled(False)
+        self.active_check = self._option(detection_layout, "Check Brotli request parsing", False,
+            "Compare three small OPTIONS requests with valid Brotli streams on each Node.js candidate site.",
+            "Shows whether Brotli JSON parsing is reachable on this path. It cannot confirm the Node.js patch level or RCE.")
         config_grid.addWidget(detection_box, 0, 2, Qt.AlignTop)
         for column in range(3):
             config_grid.setColumnStretch(column, 1)
@@ -311,7 +310,8 @@ class MainWindow(QMainWindow):
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         samples = {1: ("HTTP", "503"), 2: ("Node.js", "Detected"),
                    3: ("Version", "Next.js 16.3.3", "Node.js 24.22.0"),
-                   4: ("Active check",), 5: ("Result", "Unconfirmed")}
+                   4: ("Active check", "Parser observed", "Inconclusive"),
+                   5: ("Result", "Unconfirmed")}
         item_metrics = self.table.fontMetrics()
         header_metrics = self.table.horizontalHeader().fontMetrics()
         for col, labels in samples.items():
@@ -418,6 +418,7 @@ class MainWindow(QMainWindow):
             tls_names=self.tls_names.isChecked(), extra_ports=self.extra_ports.isChecked(),
             ports=ports, words=self.words.copy(), recursive_dns=self.recursive_dns.isChecked(),
             crawl=self.crawl.isChecked(), all_addresses=self.all_addresses.isChecked(),
+            active_check=self.active_check.isChecked(),
             verify_tls=self.verify_tls.isChecked(), concurrency=self.workers.value(),
             timeout=self.timeout.value(), interval=self.interval.value(),
         )
@@ -623,7 +624,7 @@ class MainWindow(QMainWindow):
                       asset.get("http_status") or "—",
                       asset.get("node", "Unknown").replace("_", " ").title() if found else "",
                       version_label,
-                      "Off",
+                      (asset.get("active_check") or {}).get("status", "Off"),
                       asset.get("verdict", "Unconfirmed") if found else ""]
             for col, value in enumerate(values):
                 cell = QTableWidgetItem(str(value))
@@ -639,6 +640,8 @@ class MainWindow(QMainWindow):
                     cell.setToolTip(tip)
                 elif col == 3 and framework_version and not node_version:
                     cell.setToolTip(f"{framework_name} version; Node.js runtime version is not known")
+                elif col == 4 and asset.get("active_check"):
+                    cell.setToolTip(asset["active_check"].get("reason", ""))
                 if col == 5 and found:
                     background, foreground = self.VERDICT_COLORS.get(value, ("#fff4d8", "#896a1e"))
                     cell.setBackground(QColor(background))
@@ -702,11 +705,19 @@ class MainWindow(QMainWindow):
         ) or "No Node.js runtime indicator was found."
         urls = "<br>".join(escape(url) for url in checked_urls)
         reason = escape(asset.get("verdict_reason", ""))
+        checks = asset.get("active_checks") or ([asset["active_check"]] if asset.get("active_check") else [])
+        active_lines = "<br>".join(
+            f"• {escape(check.get('status', 'Unknown'))}"
+            + (f" ({escape(check['url'])})" if check.get("url") else "")
+            + f": {escape(check.get('reason', ''))}"
+            for check in checks[:12]
+        ) or "Off."
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Node.js site details")
         dialog.setTextFormat(Qt.RichText)
         dialog.setText(f"<b>{escape(asset.get('site_url') or asset['url'])}</b><br>"
-                       f"{reason}<br><br><b>Evidence</b><br>{evidence_lines}"
+                       f"{reason}<br><br><b>Active check</b><br>{active_lines}"
+                       f"<br><br><b>Evidence</b><br>{evidence_lines}"
                        f"<br><br><b>Checked addresses</b><br>{urls}")
         dialog.exec()
 

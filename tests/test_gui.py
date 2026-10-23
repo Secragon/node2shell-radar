@@ -56,20 +56,25 @@ class GuiOptionsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.window._options()
 
-    def test_active_probe_is_not_presented_as_available(self):
-        self.assertFalse(self.window.active_check.isEnabled())
+    def test_active_probe_can_be_selected_and_reaches_engine(self):
+        self.assertTrue(self.window.active_check.isEnabled())
         self.assertFalse(self.window.active_check.isChecked())
+        self.window.active_check.setChecked(True)
+        self.assertTrue(self.window._options().active_check)
 
     def test_possible_node_site_is_shown_as_candidate(self):
         asset = {"id": "https://candidate.example.test/", "url": "https://candidate.example.test/",
                  "http_status": 200, "node": "POSSIBLE", "version": None,
                  "technologies": ["Next.js"], "technology_versions": {"Next.js": "16.3.3"},
-                 "verdict": "Unconfirmed"}
+                 "verdict": "Unconfirmed", "active_check":
+                 {"status": "Parser observed", "reason": "Valid Brotli JSON was parsed."}}
         self.window.assets[asset["id"]] = asset
         self.window.refresh_results()
         self.assertEqual(self.window.table.rowCount(), 1)
         self.assertEqual(self.window.table.item(0, 2).text(), "Possible")
         self.assertEqual(self.window.table.item(0, 3).text(), "Next.js 16.3.3")
+        self.assertEqual(self.window.table.item(0, 4).text(), "Parser observed")
+        self.assertIn("Brotli", self.window.table.item(0, 4).toolTip())
         for col in range(self.window.table.columnCount()):
             self.assertEqual(self.window.table.item(0, col).textAlignment(),
                              self.window.table.horizontalHeaderItem(col).textAlignment())

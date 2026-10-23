@@ -19,6 +19,7 @@ def main(argv=None):
     parser.add_argument("--extra-ports", action="store_true", help="Check common nonstandard web ports")
     parser.add_argument("--crawl", action="store_true", help="Follow a bounded set of same-origin GET links")
     parser.add_argument("--all-addresses", action="store_true", help="Check every resolved address")
+    parser.add_argument("--active-check", action="store_true", help="Check reachable Brotli JSON request parsing with valid compressed bodies")
     parser.add_argument("--output", help="Export report to JSON or CSV")
     args = parser.parse_args(argv)
     try:
@@ -27,7 +28,8 @@ def main(argv=None):
                               active_dns=not args.no_active_dns,
                               tls_names=not args.no_tls_names,
                               extra_ports=args.extra_ports,
-                              crawl=args.crawl, all_addresses=args.all_addresses)
+                              crawl=args.crawl, all_addresses=args.all_addresses,
+                              active_check=args.active_check)
     except ValueError as exc:
         parser.error(str(exc))
     run, assets = {}, {}

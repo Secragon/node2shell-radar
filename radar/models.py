@@ -85,6 +85,7 @@ class ScanOptions:
     ct_pages: int = 50
     tls_names: bool = True
     all_addresses: bool = False
+    active_check: bool = False
 
     def to_dict(self):
         return asdict(self)
