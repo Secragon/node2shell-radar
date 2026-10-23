@@ -181,6 +181,37 @@ class GroupingTests(unittest.TestCase):
         self.assertEqual(len(groups), 1)
         self.assertEqual(groups[0]["site_url"], "http://example.test/")
         self.assertEqual(len(groups[0]["checked_urls"]), 2)
+        self.assertEqual(groups[0]["site_variants"],
+                         ["http://example.test/", "https://example.test/"])
+
+    def test_http_upgrade_shows_only_https_destination(self):
+        base = {"http_status": 200, "node": "LIKELY", "verdict": "Unconfirmed",
+                "version": None, "content_sha256": "same", "connect_ip": None}
+        assets = [{**base, "id": "http", "url": "http://example.test/",
+                   "final_url": "https://example.test/"},
+                  {**base, "id": "https", "url": "https://example.test/",
+                   "final_url": "https://example.test/"}]
+        groups = grouped_websites(assets)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["site_variants"], ["https://example.test/"])
+        self.assertEqual(groups[0]["checked_urls"],
+                         ["http://example.test/", "https://example.test/"])
+
+    def test_http_and_https_different_sites_with_shared_layout_stay_separate(self):
+        shared = " ".join(f"topic{number}" for number in range(120))
+        assets = []
+        for scheme, title, detail in (("http", "Internal admin portal", "Administration"),
+                                      ("https", "Public customer portal", "Shopping")):
+            url = f"{scheme}://example.test/"
+            body = f"<html><title>{title}</title><p>{shared}</p><p>{detail}</p></html>"
+            assets.append({"id": url, "url": url, **fingerprint(response(
+                url=url, text=body, headers={"content-type": "text/html",
+                                              "x-powered-by": "Express"}), ["example.test"])})
+        groups = grouped_websites(assets)
+        self.assertEqual([group["site_url"] for group in groups],
+                         ["http://example.test/", "https://example.test/"])
+        self.assertEqual([group["site_variants"] for group in groups],
+                         [["http://example.test/"], ["https://example.test/"]])
 
     def test_conflicting_versions_on_one_site_are_summarized(self):
         assets = [{"id": "a", "url": "http://example.test/", "final_url": "http://example.test/",

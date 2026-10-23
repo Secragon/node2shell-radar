@@ -93,7 +93,7 @@ def equivalent_pages(left, right):
     if min(len(a), len(b)) < 20:
         return False
     similarity = len(a & b) / len(a | b)
-    if similarity >= 0.72:
-        return True
     same_canonical = bool(first.get("canonical") and first.get("canonical") == second.get("canonical"))
-    return similarity >= 0.45 and (same_title or same_canonical)
+    # Shared layout and navigation can dominate the text of different sites.
+    # A matching title or canonical origin must corroborate fuzzy content.
+    return (same_title and similarity >= 0.72) or (same_canonical and similarity >= 0.45)
