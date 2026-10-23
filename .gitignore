@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.coverage
+build/
+dist/
+release/
+*.spec.bak
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+test-out.txt
+test-err.txt
+*-err.txt
+*-out.txt
+ui-preview*.png

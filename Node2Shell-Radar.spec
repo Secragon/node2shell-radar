@@ -1,0 +1,45 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""Single-file Windows GUI build.
+
+Qt6Core uses the Windows system ICU (icuuc.dll). Build environments can have an
+unrelated ICU DLL on PATH; PyInstaller may collect it as a false dependency.
+That DLL lacks Qt's required exports and makes QtCore fail at startup.
+"""
+
+from pathlib import Path
+
+from PyInstaller.utils.hooks import collect_data_files
+
+
+a = Analysis(
+    ['radar/__main__.py'],
+    pathex=[str(Path.cwd())],
+    binaries=[],
+    datas=collect_data_files('radar'),
+    hiddenimports=[],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+
+# Never shadow Windows' ICU with one picked up from an unrelated program.
+a.binaries = [entry for entry in a.binaries if Path(entry[0]).name.lower() != 'icuuc.dll']
+
+pyz = PYZ(a.pure)
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='Node2Shell Radar',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    icon='radar/data/app-icon.ico',
+    console=False,
+)
