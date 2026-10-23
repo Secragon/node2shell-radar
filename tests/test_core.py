@@ -76,12 +76,47 @@ class DetectionTests(unittest.TestCase):
 
     def test_next_client_bundle_version_and_same_origin_paths(self):
         html = ('<script src="/_next/static/chunks/runtime.js"></script>'
+                '<script src="/portal/_next/static/chunks/app.js"></script>'
                 '<script src="https://other.example.test/_next/static/chunks/foreign.js"></script>')
         urls = next_script_urls(response(text=html))
-        self.assertEqual(urls, ["https://example.test/_next/static/chunks/runtime.js"])
+        self.assertEqual(urls, ["https://example.test/_next/static/chunks/runtime.js",
+                                "https://example.test/portal/_next/static/chunks/app.js"])
         script = 'version:function(){return k}};let k="16.3.3";window.next={version:n.version}'
         self.assertEqual(next_version_from_script(script), "16.3.3")
         self.assertIsNone(next_version_from_script('let k="16.3.3";window.next={version:n.version}'))
+
+    def test_modern_framework_html_markers_are_candidates_only(self):
+        cases = (
+            ("Next.js", '<script>self.__next_f.push([1,"payload"])</script>'),
+            ("Nuxt", '<script id="__NUXT_DATA__" type="application/json">[]</script>'),
+            ("Remix", '<script>window.__remixContext={};</script>'),
+            ("SvelteKit", '<a href="/about" data-sveltekit-preload-data="hover">About</a>'),
+        )
+        for framework, html in cases:
+            with self.subTest(framework=framework):
+                found = fingerprint(response(text=html), ["example.test"])
+                self.assertEqual(found["node"], "POSSIBLE")
+                self.assertIn(framework, found["technologies"])
+                self.assertIsNone(found["version"])
+                self.assertEqual(found["verdict"], "Unconfirmed")
+
+    def test_framework_version_from_generator_is_not_node_version(self):
+        found = fingerprint(response(text='<meta name="generator" content="Nuxt 4.1.2">'),
+                            ["example.test"])
+        self.assertEqual(found["node"], "POSSIBLE")
+        self.assertEqual(found["technology_versions"], {"Nuxt": "4.1.2"})
+        self.assertIsNone(found["version"])
+
+    def test_framework_name_in_visible_documentation_is_not_a_marker(self):
+        found = fingerprint(response(text='<pre>self.__next_f.push; __NUXT_DATA__; '
+                                          'data-sveltekit-preload-data</pre>'), ["example.test"])
+        self.assertEqual(found["node"], "NOT_ESTABLISHED")
+
+    def test_framework_header_version_is_not_node_version(self):
+        found = fingerprint(response(headers={"x-powered-by": "Nuxt 4.1.2"}), ["example.test"])
+        self.assertEqual(found["node"], "LIKELY")
+        self.assertEqual(found["technology_versions"], {"Nuxt": "4.1.2"})
+        self.assertIsNone(found["version"])
 
     def test_brotli_response_is_not_vulnerability_proof(self):
         found = fingerprint(response(headers={"content-encoding": "br", "content-type": "text/html"}),
@@ -554,11 +589,11 @@ class EngineTests(unittest.TestCase):
 
         def handler(request):
             requested.append(request.url.path)
-            if request.url.path.startswith("/_next/static/"):
+            if "/_next/static/" in request.url.path:
                 return httpx.Response(200, text='version:function(){return k}};let k="16.3.3";'
                                                  'window.next={version:n.version}')
             return httpx.Response(200, headers={"x-powered-by": "Next.js", "content-type": "text/html"},
-                                  text='<script src="/_next/static/chunks/runtime.js"></script>')
+                                  text='<script src="/portal/_next/static/chunks/runtime.js"></script>')
 
         events = []
         options = ScanOptions([Target("example.test", "https://example.test/")], passive_dns=False,
@@ -566,7 +601,7 @@ class EngineTests(unittest.TestCase):
         with patch("radar.engine.discover", fake_discover):
             asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
         asset = assessed_assets(events)[0]
-        self.assertEqual(requested, ["/", "/_next/static/chunks/runtime.js"])
+        self.assertEqual(requested, ["/", "/portal/_next/static/chunks/runtime.js"])
         self.assertEqual(asset["node"], "LIKELY")
         self.assertEqual(asset["technology_versions"], {"Next.js": "16.3.3"})
         self.assertIsNone(asset["version"])

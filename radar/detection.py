@@ -10,7 +10,9 @@ from radar.site_identity import describe_site
 
 
 NODE_VERSION = re.compile(r"\b(?:node(?:\.js)?|io\.js)[/\s:v-]+v?(\d+\.\d+\.\d+(?:[-+~.a-zA-Z0-9]*)?)\b", re.I)
-NEXT_HEADER_VERSION = re.compile(r"\bNext\.js[/\s]+v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?)\b", re.I)
+FRAMEWORK_VERSION = re.compile(
+    r"\b(Next\.js|Nuxt(?:\.js)?|SvelteKit|Remix|Gatsby)\b"
+    r"(?:[/\s]+v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?))?", re.I)
 NEXT_EXPORTED_VERSION = re.compile(r"\bversion\s*:\s*function\(\)\s*\{\s*return\s+([a-zA-Z_$][\w$]*)\s*\}")
 PROXIES = (("Cloudflare", "cf-ray"), ("CloudFront", "x-amz-cf-id"),
            ("Varnish", "x-varnish"), ("Fastly", "x-served-by"),
@@ -24,12 +26,19 @@ class Page(HTMLParser):
         self.paths = []
         self.scripts = []
         self.inline = []
+        self.markers = set()
         self._script = False
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if tag == "meta":
             self.meta.append(((attrs.get("name") or "").lower(), attrs.get("content") or ""))
+        if tag == "script" and attrs.get("id") == "__NEXT_DATA__":
+            self.markers.add("Next.js")
+        if tag == "script" and attrs.get("id") == "__NUXT_DATA__":
+            self.markers.add("Nuxt")
+        if any(name.startswith("data-sveltekit-") for name in attrs):
+            self.markers.add("SvelteKit")
         if tag in ("script", "link", "img"):
             value = attrs.get("src") or attrs.get("href")
             if value:
@@ -46,6 +55,17 @@ class Page(HTMLParser):
     def handle_data(self, data):
         if self._script:
             self.inline.append(data[:3000])
+            if ".__next_f.push" in data or "__NEXT_DATA__" in data:
+                self.markers.add("Next.js")
+            if "window.__NUXT__" in data:
+                self.markers.add("Nuxt")
+            if "__remixContext" in data:
+                self.markers.add("Remix")
+
+
+def framework_name(raw):
+    return {"next.js": "Next.js", "nuxt": "Nuxt", "nuxt.js": "Nuxt",
+            "sveltekit": "SvelteKit", "remix": "Remix", "gatsby": "Gatsby"}[raw.lower()]
 
 
 def _authority(url):
@@ -75,7 +95,7 @@ def next_script_urls(response, limit=8):
         url = urljoin(response.url, path)
         parsed = urlsplit(url)
         if (parsed.scheme != original.scheme or parsed.netloc != original.netloc or
-                not parsed.path.startswith("/_next/static/") or not parsed.path.endswith(".js")):
+                "/_next/static/" not in parsed.path or not parsed.path.endswith(".js")):
             continue
         if url not in urls:
             urls.append(url)
@@ -125,16 +145,15 @@ def observe(response):
             if re.search(rf"\b{re.escape(name)}\b", value, re.I):
                 technologies.add(name)
                 add("framework_header", key, f"{name} response header", "medium")
-        if re.search(r"\bNext\.js\b", value, re.I):
-            technologies.add("Next.js")
-            next_version = NEXT_HEADER_VERSION.search(value)
-            if next_version:
-                technology_versions["Next.js"] = next_version.group(1)
-            # Next.js emits X-Powered-By on served responses by default. A
-            # header is stronger than static asset paths, though a proxy or
-            # alternate runtime can still produce it.
-            strength = "medium" if key == "x-powered-by" else "weak"
-            add("framework_header", key, "Next.js response header; Node.js runtime is likely but unconfirmed", strength)
+        for match in FRAMEWORK_VERSION.finditer(value):
+            name = framework_name(match.group(1))
+            technologies.add(name)
+            if match.group(2):
+                technology_versions[name] = match.group(2)
+            # A framework header is stronger than a static HTML marker, but
+            # still does not prove which runtime serves the response.
+            strength = "medium" if key == "x-powered-by" and name != "Gatsby" else "weak"
+            add("framework_header", key, f"{name} response header; Node.js runtime unconfirmed", strength)
     if headers.get("x-nextjs-cache") or headers.get("x-nextjs-prerender"):
         technologies.add("Next.js")
         add("framework_header", "x-nextjs-*", "Next.js header; runtime may be elsewhere", "weak")
@@ -150,16 +169,23 @@ def observe(response):
         except (ValueError, AssertionError):
             pass
     for name, content in page.meta:
-        if name == "generator" and re.search(r"\b(?:Next\.js|Nuxt|Gatsby)\b", content, re.I):
-            product = re.search(r"\b(?:Next\.js|Nuxt|Gatsby)\b", content, re.I).group(0)
-            technologies.add(product)
-            add("generator", "meta generator", f"{product} frontend; not runtime proof", "weak")
-    if any("/_next/" in path for path in page.paths) or "__NEXT_DATA__" in response.text:
+        if name == "generator":
+            for match in FRAMEWORK_VERSION.finditer(content):
+                product = framework_name(match.group(1))
+                technologies.add(product)
+                if match.group(2):
+                    technology_versions[product] = match.group(2)
+                add("generator", "meta generator", f"{product} frontend; not runtime proof", "weak")
+    if any("/_next/" in path for path in page.paths) or "Next.js" in page.markers:
         technologies.add("Next.js")
         add("frontend", "HTML", "Next.js assets; static hosting is possible", "weak")
-    if any("/_nuxt/" in path for path in page.paths) or "__NUXT__" in response.text:
+    if any("/_nuxt/" in path for path in page.paths) or "Nuxt" in page.markers:
         technologies.add("Nuxt")
         add("frontend", "HTML", "Nuxt assets; static hosting is possible", "weak")
+    for product in ("Remix", "SvelteKit"):
+        if product in page.markers:
+            technologies.add(product)
+            add("frontend", "HTML", f"{product} markup; static or alternate hosting is possible", "weak")
 
     return {
         "url": response.url,

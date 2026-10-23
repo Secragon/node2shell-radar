@@ -612,9 +612,12 @@ class MainWindow(QMainWindow):
                       "▾ " if expandable and site_url in self.expanded_sites else
                       "▸ " if expandable else "")
             node_version = asset.get("version")
-            next_version = (asset.get("technology_versions") or {}).get("Next.js")
+            framework_versions = asset.get("technology_versions") or {}
+            framework_name = next((name for name in ("Next.js", "Nuxt", "SvelteKit", "Remix", "Gatsby")
+                                   if framework_versions.get(name)), None)
+            framework_version = framework_versions.get(framework_name) if framework_name else None
             version_label = (f"Node.js {node_version}" if node_version else
-                             f"Next.js {next_version}" if next_version else "—")
+                             f"{framework_name} {framework_version}" if framework_version else "—")
             values = [prefix + site_url,
                       asset.get("http_status") or "—",
                       asset.get("node", "Unknown").replace("_", " ").title() if found else "",
@@ -633,8 +636,8 @@ class MainWindow(QMainWindow):
                     if len(checked) > 1:
                         tip += "\nAlso checked: " + ", ".join(checked)
                     cell.setToolTip(tip)
-                elif col == 3 and next_version and not node_version:
-                    cell.setToolTip("Next.js version; Node.js runtime version is not known")
+                elif col == 3 and framework_version and not node_version:
+                    cell.setToolTip(f"{framework_name} version; Node.js runtime version is not known")
                 if col == 5 and found:
                     background, foreground = self.VERDICT_COLORS.get(value, ("#fff4d8", "#896a1e"))
                     cell.setBackground(QColor(background))
