@@ -164,17 +164,128 @@ class GroupingTests(unittest.TestCase):
         self.assertEqual(groups[0]["site_url"], "http://example.test/")
         self.assertEqual(len(groups[0]["checked_urls"]), 2)
 
-    def test_different_findings_stay_separate(self):
+    def test_conflicting_versions_on_one_site_are_summarized(self):
         assets = [{"id": "a", "url": "http://example.test/", "final_url": "http://example.test/",
                    "http_status": 200, "node": "LIKELY", "verdict": "At risk", "version": "24.22.0",
                    "content_sha256": "same"},
                   {"id": "b", "url": "https://example.test/", "final_url": "https://example.test/",
                    "http_status": 200, "node": "LIKELY", "verdict": "Fixed version reported",
                    "version": "24.22.1", "content_sha256": "same"}]
-        self.assertEqual(len(grouped_websites(assets)), 2)
+        grouped = grouped_websites(assets)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["verdict"], "Unconfirmed")
+        self.assertTrue(grouped[0]["site_conflict"])
+        self.assertEqual(grouped[0]["reported_versions"], ["24.22.0", "24.22.1"])
+
+    def test_http_upgrade_and_www_redirect_show_only_https_destination(self):
+        assets = [{"id": "http", "url": "http://example.test/",
+                   "final_url": "https://www.example.test/support/page", "http_status": 200,
+                   "node": "LIKELY", "verdict": "Unconfirmed"},
+                  {"id": "www", "url": "https://www.example.test/",
+                   "final_url": "https://www.example.test/", "http_status": 200,
+                   "node": "LIKELY", "verdict": "Unconfirmed"}]
+        grouped = grouped_websites(assets)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["site_url"], "https://www.example.test/")
+        self.assertEqual(grouped[0]["site_variants"], ["https://www.example.test/"])
+
+    def test_foreign_redirect_is_not_an_in_scope_site(self):
+        asset = {"id": "alias", "url": "http://alias.example.test/",
+                 "final_url": "https://foreign.test/", "site_url": "http://alias.example.test/",
+                 "external_redirect": True, "http_status": 200, "node": "DETECTED",
+                 "version": "24.22.0", "verdict": "At risk"}
+        self.assertEqual(grouped_websites([asset]), [])
+
+    def test_empty_200_and_weak_404_do_not_establish_sites(self):
+        empty = fingerprint(response(url="https://empty.example.test/", text=""), ["example.test"])
+        error = fingerprint(response(url="https://error.example.test/", status=404,
+                                     headers={"x-powered-by": "Express", "content-type": "text/html"}),
+                            ["example.test"])
+        self.assertEqual(grouped_websites([
+            {"id": "empty", "url": "https://empty.example.test/", **empty},
+            {"id": "error", "url": "https://error.example.test/", **error},
+        ]), [])
+
+    def test_equivalent_dynamic_apex_and_www_pages_share_one_row(self):
+        words = " ".join(f"topic{number}" for number in range(120))
+        body = f"<title>Example service</title><p>{words}</p>"
+        assets = []
+        for host, text in (("example.test", body),
+                           ("www.example.test", body.replace("topic45", "changed45"))):
+            url = f"https://{host}/"
+            assets.append({"id": url, "url": url,
+                           **fingerprint(response(url=url, text=text,
+                                                  headers={"content-type": "text/html",
+                                                           "x-powered-by": "Express"}), ["example.test"])})
+        grouped = grouped_websites(assets)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["site_variants"],
+                         ["https://example.test/", "https://www.example.test/"])
+
+    def test_hostname_titled_aliases_fold_under_named_site(self):
+        body = "<title>about.example.test</title><p>" + "story " * 150 + "</p>"
+        assets = []
+        for host in ("about.example.test", "www.old.example.test"):
+            url = f"https://{host}/"
+            assets.append({"id": url, "url": url,
+                           **fingerprint(response(url=url, text=body,
+                                                  headers={"content-type": "text/html",
+                                                           "x-powered-by": "Express"}), ["example.test"])})
+        grouped = grouped_websites(assets)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["site_url"], "https://about.example.test/")
+        self.assertEqual(len(grouped[0]["site_variants"]), 2)
 
 
 class EngineTests(unittest.TestCase):
+    def test_wildcard_error_page_is_not_a_node_site_with_rotating_ip(self):
+        async def fake_discover(options, network, control, emit):
+            return [{"target": Target("account.example.test"), "source": {"active DNS"},
+                     "ips": {"127.0.0.2"}, "dns": {"A": "OK"}, "wildcard": False,
+                     "wildcard_root": "example.test", "wildcard_probe": "radar-random.example.test"}]
+
+        requests = []
+        def handler(request):
+            requests.append(request)
+            return httpx.Response(404, headers={"x-powered-by": "Express", "content-type": "text/html"},
+                                  text="<title>Shared error page</title><p>Not found</p>")
+
+        events = []
+        options = ScanOptions([Target("example.test")], passive_dns=False, active_dns=False,
+                              tls_names=False, words=[], interval=0)
+        with patch("radar.engine.discover", fake_discover):
+            asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
+        checked = [event["asset"] for event in events if event["type"] == "asset"]
+        self.assertEqual(len(checked), 2)
+        self.assertTrue(all(asset.get("wildcard_http_match") for asset in checked))
+        self.assertTrue(all(asset["node"] == "NOT_ESTABLISHED" for asset in checked))
+        self.assertEqual(grouped_websites(checked), [])
+        self.assertTrue(all(request.headers["user-agent"].startswith("Mozilla/5.0 (compatible; Node2Shell-Radar")
+                            for request in requests))
+
+    def test_unreachable_wildcard_port_is_not_repeated_for_each_name(self):
+        async def fake_discover(options, network, control, emit):
+            return [{"target": Target("account.example.test"), "source": {"active DNS"},
+                     "ips": {"127.0.0.2"}, "dns": {"A": "OK"}, "wildcard": True,
+                     "wildcard_root": "example.test", "wildcard_probe": "radar-random.example.test"}]
+        async def unreachable(address, port, timeout):
+            return False
+        requested = []
+        def handler(request):
+            requested.append(str(request.url))
+            return httpx.Response(404, text="No site")
+
+        events = []
+        options = ScanOptions([Target("example.test")], passive_dns=False, active_dns=False,
+                              tls_names=False, words=[], interval=0)
+        with patch("radar.engine.discover", fake_discover), patch("radar.engine.tcp_port_reachable", unreachable):
+            asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
+        self.assertEqual(len(requested), 2)  # One HTTP and one HTTPS random-name baseline.
+        self.assertEqual([event["asset"]["node"] for event in events if event["type"] == "asset"],
+                         ["NOT_ESTABLISHED", "NOT_ESTABLISHED"])
+        finished = next(event for event in events if event["type"] == "finished")
+        self.assertEqual(finished["coverage"]["wildcard_tcp_skipped"], 2)
+
     def test_engine_reads_next_client_version_without_node_version(self):
         async def fake_discover(options, network, control, emit):
             return [{"target": Target("example.test", "https://example.test/"),

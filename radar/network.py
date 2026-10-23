@@ -40,7 +40,7 @@ class Network:
         self.control = control
         self.client = httpx.AsyncClient(
             verify=options.verify_tls, timeout=options.timeout,
-            headers={"User-Agent": "Node2Shell-Radar/0.1 (exposure-triage)",
+            headers={"User-Agent": "Mozilla/5.0 (compatible; Node2Shell-Radar; +https://github.com/Secragon/node2shell-radar)",
                      "Accept-Encoding": "identity"},
             follow_redirects=False, transport=transport, trust_env=False,
             limits=httpx.Limits(max_connections=options.concurrency),

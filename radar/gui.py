@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from radar.engine import Control, run_scan
 from radar.models import ScanOptions, WEB_PORTS, default_words, parse_targets
-from radar.storage import Store, export_visible_results, grouped_websites
+from radar.storage import EMPTY_CONTENT_SHA256, Store, export_visible_results, grouped_websites
 from radar.widgets import CopyToast, StyledCheckBox
 
 
@@ -512,6 +512,17 @@ class MainWindow(QMainWindow):
             self.assets[asset["id"]] = asset
             if self.run_document.get("id"):
                 self.store.save_asset(self.run_document["id"], asset)
+            if asset.get("external_redirect"):
+                self.journal.appendPlainText(
+                    f"Outside scan scope: {asset['url']} → {asset.get('final_url', '')}")
+            elif asset.get("wildcard_http_match"):
+                self.journal.appendPlainText(
+                    f"Wildcard page: {asset['url']} matches a random DNS name; excluded from sites")
+            elif (asset.get("http_status") == 200 and
+                  asset.get("content_sha256") == EMPTY_CONTENT_SHA256 and
+                  asset.get("node") == "NOT_ESTABLISHED"):
+                self.journal.appendPlainText(
+                    f"Empty response: {asset['url']} did not establish a website")
             self.refresh_timer.start(120)
         elif kind == "progress":
             total = max(1, event["total"])

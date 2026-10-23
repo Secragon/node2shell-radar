@@ -6,6 +6,7 @@ import re
 from urllib.parse import urljoin, urlsplit
 
 from radar.models import CVE, assess_version, utc_now
+from radar.site_identity import describe_site
 
 
 NODE_VERSION = re.compile(r"\b(?:node(?:\.js)?|io\.js)[/\s:v-]+v?(\d+\.\d+\.\d+(?:[-+~.a-zA-Z0-9]*)?)\b", re.I)
@@ -174,10 +175,13 @@ def observe(response):
 
 
 def fingerprint(response, scope_hosts=()):
+    scope_hosts = tuple(scope_hosts)
     observations = [observe(hop) for hop in response.history] + [observe(response)]
     original = _authority(observations[0]["url"])
     final = _authority(response.url)
-    target = final if final != original and _in_scope(response.url, scope_hosts) else original
+    final_in_scope = _in_scope(response.url, scope_hosts)
+    external_redirect = final != original and not final_in_scope
+    target = final if final != original and final_in_scope else original
     owned = [item for item in observations if _authority(item["url"]) == target]
     evidence = [entry for item in owned for entry in item["evidence"]]
     versions = sorted({version for item in owned for version in item["reported_versions"]})
@@ -204,8 +208,10 @@ def fingerprint(response, scope_hosts=()):
     return {
         "observed_at": utc_now(), "final_url": response.url,
         "site_url": response.url if target == final else observations[0]["url"],
+        "external_redirect": external_redirect,
         "content_sha256": hashlib.sha256(response.text.encode("utf-8")).hexdigest()
-                          if response.status == 200 and not response.truncated else None,
+                          if response.status > 0 and not response.truncated else None,
+        "site_identity": describe_site(response),
         "http_status": response.status, "elapsed_ms": response.elapsed_ms,
         "node": node, "confidence": "high" if strong else "medium" if medium else "low" if weak else "none",
         "version": version, "reported_versions": versions,

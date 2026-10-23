@@ -10,6 +10,7 @@ from radar.detection import fingerprint, next_script_urls, next_version_from_scr
 from radar.discovery import discover, resolve_details
 from radar.models import endpoints, utc_now
 from radar.network import Network, Stopped, gather_workers
+from radar.site_identity import equivalent_pages
 from radar.tls import inspect_tls
 
 
@@ -33,6 +34,38 @@ def pending_asset(url, target, ips=(), source=("input",), connect_ip=None):
             "ips": sorted(ips), "source": sorted(source), "node": "PENDING",
             "verdict": "Unconfirmed", "verdict_reason": "HTTP check pending.",
             "evidence": [], "version": None, "error": ""}
+
+
+def wildcard_page_match(item, baseline):
+    """A candidate serving the random wildcard page is not a separate site."""
+    if (not baseline or not isinstance(item.get("http_status"), int) or
+            item["http_status"] != baseline.get("http_status")):
+        return False
+    if any(item.get(field) != baseline.get(field) for field in
+           ("node", "version", "server", "technologies", "technology_versions")):
+        return False
+    digest = item.get("content_sha256")
+    if digest and digest == baseline.get("content_sha256"):
+        return True
+    if item["http_status"] == 200:
+        return equivalent_pages(item, baseline)
+    first, second = item.get("site_identity") or {}, baseline.get("site_identity") or {}
+    a, b = set(first.get("sketch") or ()), set(second.get("sketch") or ())
+    return bool(first.get("title") and len(first["title"]) >= 8 and
+                first["title"] == second.get("title") and
+                min(first.get("captured_chars", 0), second.get("captured_chars", 0)) >= 512 and
+                min(len(a), len(b)) >= 20 and len(a & b) / len(a | b) >= 0.85)
+
+
+async def tcp_port_reachable(address, port, timeout):
+    """Avoid repeated HTTP timeouts on one unreachable wildcard IP/port."""
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(address, port), timeout=timeout)
+        writer.close()
+        await writer.wait_closed()
+        return True
+    except (OSError, TimeoutError):
+        return False
 
 
 def merge_crawl(base, pages):
@@ -98,7 +131,8 @@ async def run_scan(options, control, emit, transport=None):
     run_id = str(uuid.uuid4())
     emit({"type": "started", "id": run_id, "started_at": utc_now(), "options": options.to_dict()})
     coverage = {"dns_unresolved": 0, "http_errors": 0, "tls_errors": 0,
-                "wildcard_candidates": 0, "crawl_partial": 0, "sources": []}
+                "wildcard_candidates": 0, "wildcard_http_matches": 0,
+                "wildcard_tcp_skipped": 0, "crawl_partial": 0, "sources": []}
     completed = 0
     try:
         await control.checkpoint()
@@ -110,6 +144,33 @@ async def run_scan(options, control, emit, transport=None):
 
         emit({"type": "stage", "stage": "DNS and public-source discovery", "completed": 0, "total": 0})
         hosts = await discover(options, network, control, discovery_event)
+        wildcard_baselines = {}
+        for root, probe in sorted({(host["wildcard_root"], host["wildcard_probe"])
+                                   for host in hosts if host.get("wildcard_probe")}):
+            for scheme in ("https", "http"):
+                await control.checkpoint()
+                try:
+                    response = await network.request("GET", f"{scheme}://{probe}/")
+                    wildcard_baselines[(root, scheme)] = fingerprint(response, (root,))
+                except Stopped:
+                    raise
+                except Exception as exc:
+                    emit({"type": "log", "message":
+                          f"Wildcard HTTP baseline for {root} ({scheme}): {type(exc).__name__}."})
+        wildcard_ports = set()
+        for host in hosts:
+            if host.get("wildcard"):
+                for url in endpoints(host["target"], options):
+                    parsed = urlsplit(url)
+                    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+                    wildcard_ports.update((address, port) for address in host["ips"])
+        wildcard_tcp = {}
+        for address, port in sorted(wildcard_ports):
+            await control.checkpoint()
+            wildcard_tcp[(address, port)] = await tcp_port_reachable(address, port, options.timeout)
+            if not wildcard_tcp[(address, port)]:
+                emit({"type": "log", "message":
+                      f"Wildcard DNS address {address}:{port}: TCP unavailable; matching candidates are not HTTP sites."})
         queue, unique = asyncio.Queue(), set()
         for host in hosts:
             await control.checkpoint()
@@ -129,9 +190,20 @@ async def run_scan(options, control, emit, transport=None):
                     item = pending_asset(url, target, host["ips"], host["source"], address)
                     item["dns"] = host["dns"]
                     item["wildcard_ambiguous"] = host.get("wildcard", False)
+                    if host.get("wildcard_root"):
+                        item["wildcard_root"] = host["wildcard_root"]
                     if item["id"] in unique:
                         continue
                     unique.add(item["id"])
+                    parsed = urlsplit(url)
+                    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+                    if (host.get("wildcard") and
+                            all(wildcard_tcp.get((ip, port)) is False for ip in host["ips"])):
+                        item.update(node="NOT_ESTABLISHED",
+                                    error=f"Wildcard DNS address has no reachable TCP service on port {port}.")
+                        coverage["wildcard_tcp_skipped"] += 1
+                        emit({"type": "asset", "asset": item})
+                        continue
                     queue.put_nowait(item)
 
         total = queue.qsize()
@@ -151,12 +223,20 @@ async def run_scan(options, control, emit, transport=None):
                     else:
                         response = await network.request("GET", item["url"])
                     item.update(fingerprint(response, (target.host for target in options.targets)))
-                    await enrich_next_version(item, response, network)
-                    if options.crawl and response.status == 200:
-                        pages, report = await crawl_pages(network, response, options.max_pages, item["connect_ip"])
-                        item["crawl"] = report
-                        coverage["crawl_partial"] += int(report["partial"])
-                        merge_crawl(item, pages)
+                    if (item.get("wildcard_root") and wildcard_page_match(
+                            item, wildcard_baselines.get((item["wildcard_root"], urlsplit(item["url"]).scheme)))):
+                        item["wildcard_http_match"] = True
+                        item["node"] = "NOT_ESTABLISHED"
+                        item["verdict"] = "Unconfirmed"
+                        item["verdict_reason"] = "This hostname serves the same page as a random wildcard DNS name."
+                        coverage["wildcard_http_matches"] += 1
+                    else:
+                        await enrich_next_version(item, response, network)
+                        if options.crawl and response.status == 200:
+                            pages, report = await crawl_pages(network, response, options.max_pages, item["connect_ip"])
+                            item["crawl"] = report
+                            coverage["crawl_partial"] += int(report["partial"])
+                            merge_crawl(item, pages)
                 except Stopped:
                     raise
                 except Exception as exc:

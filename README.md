@@ -20,7 +20,16 @@ Brotli probe has been validated; it does not send traffic or affect verdicts.
 1. **Find websites.** Public subdomain sources, common DNS names and TLS certificate names are enabled at launch. Each name is resolved and checked over HTTP or HTTPS before it counts as reached. Extra ports, per-IP checks and bounded site crawling are separate options.
 2. **Recognize Node.js clues.** A direct Node.js response header is stronger evidence than an Express or Koa header. Next.js and Nuxt assets alone may be statically hosted, so they do not count as a confirmed running Node.js service.
 3. **Assess version evidence.** A Node.js version reported over HTTP is compared with the upstream security releases. Missing, conflicting or vendor-specific versions stay unconfirmed.
-4. **Review the rest.** After completion, *Show other websites* reveals reached sites without Node.js runtime evidence. Raw checked addresses and the evidence behind each result remain in the JSON/CSV export.
+4. **Review the rest.** After completion, *Show other websites* reveals reached sites without Node.js runtime evidence. Checked addresses and evidence remain in the saved session; JSON/CSV export contains the currently visible result rows.
+
+Results group paths and equivalent HTTP/HTTPS, apex/`www`, or host aliases under
+one website. HTTP upgrades display the HTTPS destination; separate direct
+views appear in a dropdown only when their public pages agree. Shared wildcard
+DNS pages, weak error pages, empty HTTP 200 responses, and redirects outside
+the entered domain scope stay in the journal instead of inflating the site
+count. Requests use a browser-compatible User-Agent that identifies
+Node2Shell Radar. Public data sources can rate-limit discovery, so the scan
+cannot guarantee every subdomain was found.
 
 | Result | Meaning |
 | --- | --- |

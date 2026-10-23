@@ -288,10 +288,15 @@ async def discover(options, network, control, emit):
             for name in await public_link_names(root, network, log):
                 candidates.setdefault(name, set()).add("public site link")
         wildcard = set()
+        wildcard_probe = None
         if options.active_dns:
             for _ in range(3):
                 await control.checkpoint()
-                wildcard.update(await resolve(f"radar-{secrets.token_hex(10)}.{root}", options.timeout))
+                probe = f"radar-{secrets.token_hex(10)}.{root}"
+                addresses = await resolve(probe, options.timeout)
+                if addresses and wildcard_probe is None:
+                    wildcard_probe = probe
+                wildcard.update(addresses)
             for word in options.words:
                 name = candidate_name(f"{word}.{root}", root)
                 if name:
@@ -319,6 +324,11 @@ async def discover(options, network, control, emit):
                     host["source"].update(sources)
                     host["dns"] = result.document()
                     host["wildcard"] = ambiguous
+                    # CDN wildcard answers can rotate between several IPs.
+                    # Compare the random HTTP response for every resolved name.
+                    if wildcard_probe and result.ips:
+                        host["wildcard_probe"] = wildcard_probe
+                        host["wildcard_root"] = root
                     if ambiguous:
                         host["source"].add("wildcard ambiguous")
                     # Retain historical, NXDOMAIN and temporarily unresolved candidates.
