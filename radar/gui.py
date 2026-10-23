@@ -557,14 +557,17 @@ class MainWindow(QMainWindow):
         node_rows = [item for item in rows if item.get("node") in self.NODE_ROWS]
         other_rows = [item for item in rows if item.get("node") not in self.NODE_ROWS]
         self.metric_label.setText(f"Node.js candidates {len(node_rows)}/{len(rows)}")
-        groups = node_rows + (other_rows if self.show_other.isChecked() and self.finished else [])
+        if not (self.show_other.isChecked() and self.finished):
+            other_rows = []
         query = self.search.text().strip().lower()
         if query:
-            groups = [item for item in groups if any(
-                query in url.lower() for url in
-                [item.get("site_url") or item["url"], *item.get("checked_urls", ())])]
+            def matches(item):
+                return any(query in url.lower() for url in
+                           [item.get("site_url") or item["url"], *item.get("checked_urls", ())])
+            node_rows = [item for item in node_rows if matches(item)]
+            other_rows = [item for item in other_rows if matches(item)]
         display = []
-        for group in groups:
+        def add_group(group):
             display.append(group)
             site_url = group.get("site_url") or group["url"]
             variants = [url for url in group.get("site_variants", ()) if url != site_url]
@@ -579,12 +582,29 @@ class MainWindow(QMainWindow):
                     child["site_url"] = variant
                     child["_child"] = True
                     display.append(child)
+        for group in node_rows:
+            add_group(group)
+        if other_rows:
+            display.append({"_section": True})
+            for group in other_rows:
+                add_group(group)
         self.display_rows = display
         selected = self.table.currentItem().data(Qt.UserRole) if self.table.currentItem() else None
         self.table.blockSignals(True)
         self.table.clearSelection()
         self.table.setRowCount(len(display))
         for index, asset in enumerate(display):
+            if asset.get("_section"):
+                for col in range(self.table.columnCount()):
+                    cell = QTableWidgetItem("Other discovered sites · Node.js not detected" if col == 0 else "")
+                    cell.setBackground(QColor("#eef4fb"))
+                    cell.setForeground(QColor("#526477"))
+                    font = cell.font()
+                    font.setBold(True)
+                    cell.setFont(font)
+                    cell.setFlags(Qt.ItemIsEnabled)
+                    self.table.setItem(index, col, cell)
+                continue
             found = asset.get("node") in self.NODE_ROWS
             site_url = asset.get("site_url") or asset["url"]
             expandable = not asset.get("_child") and len(asset.get("site_variants", ())) > 1
@@ -605,8 +625,14 @@ class MainWindow(QMainWindow):
                 cell = QTableWidgetItem(str(value))
                 cell.setData(Qt.UserRole, asset["id"])
                 cell.setTextAlignment(self.table.horizontalHeaderItem(col).textAlignment())
-                if col == 0 and expandable:
-                    cell.setToolTip("Click to expand matching site addresses")
+                if col == 0:
+                    tip = "Click to copy this address. Double-click for details."
+                    if expandable:
+                        tip += " Click to show or hide other addresses of this site."
+                    checked = asset.get("checked_urls", ())
+                    if len(checked) > 1:
+                        tip += "\nAlso checked: " + ", ".join(checked)
+                    cell.setToolTip(tip)
                 elif col == 3 and next_version and not node_version:
                     cell.setToolTip("Next.js version; Node.js runtime version is not known")
                 if col == 5 and found:
@@ -622,6 +648,8 @@ class MainWindow(QMainWindow):
         if not 0 <= row < len(self.display_rows):
             return
         asset = self.display_rows[row]
+        if asset.get("_section"):
+            return
         site_url = asset.get("site_url") or asset["url"]
         QApplication.clipboard().setText(site_url)
         if column == 0 and not asset.get("_child") and len(asset.get("site_variants", ())) > 1:
@@ -641,14 +669,17 @@ class MainWindow(QMainWindow):
     def visible_result_rows(self):
         results = []
         for row, asset in enumerate(self.display_rows):
+            if asset.get("_section"):
+                continue
             result = {self.table.horizontalHeaderItem(col).text(): self.table.item(row, col).text()
                       for col in range(self.table.columnCount())}
             result["Address"] = asset.get("site_url") or asset["url"]
             results.append(result)
         return results
 
-    def show_details(self, *_):
-        row = self.table.currentRow()
+    def show_details(self, row=None, _column=None):
+        if row is None:
+            row = self.table.currentRow()
         if row < 0:
             return
         cell = self.table.item(row, 0)
@@ -657,6 +688,8 @@ class MainWindow(QMainWindow):
         if row >= len(self.display_rows):
             return
         asset = self.display_rows[row]
+        if asset.get("_section"):
+            return
         checked_urls = asset.get("checked_urls", [asset["url"]])
         evidence = asset.get("evidence") or []
         evidence_lines = "<br>".join(

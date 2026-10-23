@@ -96,7 +96,8 @@ def _same_site_views(first, second):
     first_status, second_status = first.get("http_status"), second.get("http_status")
     if (first_status not in (200, 401, 403) or second_status not in (200, 401, 403) or
             first.get("connect_ip") != second.get("connect_ip") or
-            not a.hostname or not b.hostname or
+            not a.hostname or not b.hostname or a.scheme not in ("http", "https") or
+            b.scheme not in ("http", "https") or
             a.port not in (None, 80 if a.scheme == "http" else 443) or
             b.port not in (None, 80 if b.scheme == "http" else 443) or
             a.hostname.removeprefix("www.") != b.hostname.removeprefix("www.")):
@@ -105,9 +106,20 @@ def _same_site_views(first, second):
     if first_status != 200 or second_status != 200:
         return bool(first_status == second_status and digest and digest != EMPTY_CONTENT_SHA256 and
                     digest == second.get("content_sha256"))
-    if digest and digest == second.get("content_sha256") and digest != EMPTY_CONTENT_SHA256:
+    if (digest and digest == second.get("content_sha256") and
+            min((first.get("site_identity") or {}).get("captured_chars", 0),
+                (second.get("site_identity") or {}).get("captured_chars", 0)) >= 4):
         return True
-    return equivalent_pages(first, second)
+    if equivalent_pages(first, second):
+        return True
+    if first.get("site_identity") and second.get("site_identity"):
+        return False
+    # Older saved scans have no page sketch. Preserve their protocol pairing
+    # when the passive Node.js conclusions agree.
+    return (a.hostname == b.hostname and a.scheme != b.scheme and
+            first.get("node") == second.get("node") and
+            first.get("version") == second.get("version") and
+            first.get("verdict") == second.get("verdict"))
 
 
 def _variant_preference(key, asset):
@@ -160,11 +172,11 @@ def grouped_websites(assets):
             for key in matches[1:]:
                 join(matches[0], key)
 
-    # A strongly identified Node.js error page joins a healthy protocol/www
-    # view of the same host instead of creating an extra website row.
+    # An HTTP 5xx page is not another website when a healthy protocol/www
+    # variant of the same hostname was reached. Keep it in site details.
     for key in keys:
         asset = groups[key][0]
-        if asset.get("http_status") == 200:
+        if not 500 <= asset.get("http_status", 0) <= 599:
             continue
         for sibling in keys:
             healthy = groups[sibling][0]
@@ -173,16 +185,33 @@ def grouped_websites(assets):
                     key[3] == sibling[3]):
                 join(sibling, key)
                 break
+    for index, key in enumerate(keys):
+        asset = groups[key][0]
+        if not 500 <= asset.get("http_status", 0) <= 599:
+            continue
+        for sibling in keys[index + 1:]:
+            other = groups[sibling][0]
+            if (500 <= other.get("http_status", 0) <= 599 and
+                    key[1] == sibling[1] and key[3] == sibling[3]):
+                join(key, sibling)
 
     clusters = {}
     for key in keys:
         clusters.setdefault(root(key), []).append(key)
     display = []
     rank = {"NOT_ESTABLISHED": 0, "POSSIBLE": 1, "LIKELY": 2, "DETECTED": 3}
-    for family in clusters.values():
+    key_order = {key: index for index, key in enumerate(keys)}
+    for family in sorted(clusters.values(), key=lambda family: min(key_order[key] for key in family)):
         members = [asset for key in family for asset in groups[key]]
         reachable = [key for key in family if groups[key][0].get("http_status") in (200, 401, 403)]
         if not reachable and not any(item.get("node") == "DETECTED" for item in members):
+            continue
+        if (not any(item.get("node") in ("DETECTED", "LIKELY", "POSSIBLE") for item in members) and
+                any(other_key not in family and other_key[1] == key[1] and
+                    other_key[3] == key[3] and
+                    any(item.get("node") in ("DETECTED", "LIKELY", "POSSIBLE")
+                        for item in groups[other_key])
+                    for key in family for other_key in keys)):
             continue
         variants = reachable or family[:1]
         preferred = min(variants, key=lambda key: _variant_preference(key, groups[key][0]))
@@ -242,7 +271,7 @@ def grouped_websites(assets):
                 if entry not in shown["evidence"]:
                     shown["evidence"].append(entry)
         display.append(shown)
-    return sorted(display, key=lambda item: item["site_url"])
+    return display
 
 
 def export_report(path, run, assets):

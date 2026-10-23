@@ -38,11 +38,6 @@ class SitePage(HTMLParser):
         self.visible.append(data)
 
 
-def origin(url):
-    parsed = urlsplit(url)
-    return urlunsplit((parsed.scheme, parsed.netloc, "/", "", "")) if parsed.hostname else ""
-
-
 def describe_site(response):
     """Store only a small sketch of public text, never the page body."""
     if response.status <= 0:
@@ -63,7 +58,10 @@ def describe_site(response):
     canonical = ""
     if parser.canonical:
         try:
-            canonical = origin(urljoin(response.url, parser.canonical))
+            parsed = urlsplit(urljoin(response.url, parser.canonical))
+            if parsed.hostname:
+                canonical = urlunsplit((parsed.scheme, parsed.netloc, parsed.path or "/",
+                                        parsed.query, ""))
         except ValueError:
             pass
     return {"title": title[:160], "canonical": canonical,
@@ -86,7 +84,8 @@ def equivalent_pages(left, right):
         return True
     a, b = set(first.get("sketch") or ()), set(second.get("sketch") or ())
     same_title = len(first.get("title", "")) >= 8 and first.get("title") == second.get("title")
-    if (min(len(a), len(b)) >= 8 and same_title and
+    short_same_title = len(first.get("title", "")) >= 6 and first.get("title") == second.get("title")
+    if (min(len(a), len(b)) >= 8 and short_same_title and
             min(first.get("captured_chars", 0), second.get("captured_chars", 0)) >= 2048 and
             len(a & b) / len(a | b) >= 0.9):
         return True

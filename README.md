@@ -29,6 +29,8 @@ DNS pages, weak error pages, empty HTTP 200 responses, and redirects outside
 the entered domain scope stay in the journal instead of inflating the site
 count. Wildcard pages that only echo the requested hostname are recognized as
 the same page; identical HTTP/HTTPS 401 or 403 views group into one site.
+Unresolved DNS candidates and each checked crawl page remain separate assets
+in the saved session, while reached pages of one site share a result row.
 Requests use a browser-compatible User-Agent that identifies
 Node2Shell Radar. Public data sources can rate-limit discovery, so the scan
 cannot guarantee every subdomain was found.

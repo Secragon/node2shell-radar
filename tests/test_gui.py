@@ -133,6 +133,31 @@ class GuiOptionsTests(unittest.TestCase):
         self.assertTrue(all(not self.window.table.item(row, 0).text().startswith("▸")
                             for row in range(2)))
 
+    def test_other_sites_have_separate_heading_and_export_only_site_rows(self):
+        for key, node in (("candidate", "LIKELY"), ("plain", "NOT_ESTABLISHED")):
+            url = f"https://{key}.example.test/"
+            self.window.assets[key] = {"id": key, "url": url, "final_url": url,
+                                       "http_status": 200, "node": node,
+                                       "version": None, "verdict": "Unconfirmed",
+                                       "content_sha256": key}
+        self.window.finished = True
+        self.window.show_other.setChecked(True)
+        self.window.refresh_results()
+        self.assertEqual(self.window.table.rowCount(), 3)
+        self.assertEqual(self.window.table.item(1, 0).text(),
+                         "Other discovered sites · Node.js not detected")
+        self.assertEqual([item["Address"] for item in self.window.visible_result_rows()],
+                         ["https://candidate.example.test/", "https://plain.example.test/"])
+        self.window.copy_site(1, 0)
+        self.assertEqual(self.window.table.rowCount(), 3)
+        with patch("radar.gui.QMessageBox.exec") as open_details:
+            self.window.show_details(1, 0)
+        open_details.assert_not_called()
+        self.window.search.setText("plain")
+        self.assertEqual(self.window.table.rowCount(), 2)
+        self.assertEqual(self.window.table.item(0, 0).text(),
+                         "Other discovered sites · Node.js not detected")
+
     def test_window_icon_has_small_sizes_and_no_inventory_control(self):
         sizes = {size.width() for size in self.window.windowIcon().availableSizes()}
         self.assertTrue({16, 32, 256}.issubset(sizes))

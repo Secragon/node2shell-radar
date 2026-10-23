@@ -15,6 +15,11 @@ def response(url="https://example.test/", headers=None, text="<html></html>", st
     return Response(url, status, headers or {"content-type": "text/html"}, text, 20)
 
 
+def assessed_assets(events):
+    return [event["asset"] for event in events
+            if event["type"] == "asset" and event["asset"].get("node") != "PENDING"]
+
+
 class VersionTests(unittest.TestCase):
     def test_fixed_boundaries(self):
         for older, fixed in (("22.23.3", "22.23.4"), ("24.22.0", "24.22.1"),
@@ -87,6 +92,14 @@ class DetectionTests(unittest.TestCase):
 
 
 class GroupingTests(unittest.TestCase):
+    def test_site_rows_follow_asset_arrival_order(self):
+        assets = [{"id": host, "url": f"https://{host}/", "http_status": 200,
+                   "node": "LIKELY", "verdict": "Unconfirmed",
+                   "content_sha256": host}
+                  for host in ("z.example.test", "a.example.test")]
+        self.assertEqual([site["site_url"] for site in grouped_websites(assets)],
+                         ["https://z.example.test/", "https://a.example.test/"])
+
     def test_paths_on_same_site_are_one_result_with_paths_in_details(self):
         base = {"http_status": 200, "node": "LIKELY", "verdict": "Unconfirmed",
                 "version": None, "connect_ip": None}
@@ -213,6 +226,67 @@ class GroupingTests(unittest.TestCase):
         self.assertEqual([group["site_variants"] for group in groups],
                          [["http://example.test/"], ["https://example.test/"]])
 
+    def test_distinct_canonical_paths_do_not_merge_shared_layouts(self):
+        shared = " ".join(f"topic{number}" for number in range(120))
+        assets = []
+        for scheme, title, path in (("http", "Internal admin portal", "admin"),
+                                    ("https", "Public customer portal", "shop")):
+            url = f"{scheme}://example.test/"
+            body = (f'<title>{title}</title><link rel="canonical" '
+                    f'href="https://example.test/{path}"><p>{shared}</p>')
+            asset = {"id": url, "url": url, **fingerprint(response(
+                url=url, text=body, headers={"content-type": "text/html",
+                                             "x-powered-by": "Express"}), ["example.test"])}
+            assets.append(asset)
+        self.assertEqual([asset["site_identity"]["canonical"] for asset in assets],
+                         ["https://example.test/admin", "https://example.test/shop"])
+        self.assertEqual(len(grouped_websites(assets)), 2)
+
+    def test_short_identical_pages_do_not_prove_two_protocols_are_one_site(self):
+        assets = []
+        for scheme in ("http", "https"):
+            url = f"{scheme}://example.test/"
+            assets.append({"id": url, "url": url, **fingerprint(response(
+                url=url, text="abc", headers={"content-type": "text/html",
+                                               "x-powered-by": "Express"}), ["example.test"])})
+        self.assertEqual(len(grouped_websites(assets)), 2)
+
+    def test_restricted_and_healthy_protocol_views_remain_separate(self):
+        assets = [{"id": scheme, "url": f"{scheme}://example.test/",
+                   "http_status": status, "node": "LIKELY", "verdict": "Unconfirmed",
+                   "content_sha256": digest}
+                  for scheme, status, digest in (("http", 401, "login"),
+                                                 ("https", 200, "home"))]
+        self.assertEqual(len(grouped_websites(assets)), 2)
+
+    def test_server_error_joins_healthy_view_but_restricted_view_does_not(self):
+        assets = [{"id": "healthy", "url": "https://example.test/", "http_status": 200,
+                   "node": "LIKELY", "verdict": "Unconfirmed", "content_sha256": "home"},
+                  {"id": "error", "url": "http://example.test/", "http_status": 503,
+                   "node": "DETECTED", "verdict": "Unconfirmed", "content_sha256": "error"}]
+        grouped = grouped_websites(assets)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["site_url"], "https://example.test/")
+        self.assertEqual(grouped[0]["node"], "DETECTED")
+
+    def test_two_server_error_protocols_are_one_host_result(self):
+        assets = [{"id": scheme, "url": f"{scheme}://example.test/",
+                   "http_status": 503, "node": "DETECTED", "verdict": "Unconfirmed",
+                   "content_sha256": digest}
+                  for scheme, digest in (("http", "first-error"), ("https", "second-error"))]
+        self.assertEqual(len(grouped_websites(assets)), 1)
+
+    def test_unidentified_protocol_view_does_not_add_other_site_row(self):
+        assets = [{"id": "http", "url": "http://example.test/", "http_status": 200,
+                   "node": "NOT_ESTABLISHED", "verdict": "Unconfirmed",
+                   "content_sha256": "public"},
+                  {"id": "https", "url": "https://example.test/", "http_status": 200,
+                   "node": "LIKELY", "verdict": "Unconfirmed",
+                   "content_sha256": "different-app"}]
+        grouped = grouped_websites(assets)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["site_url"], "https://example.test/")
+
     def test_conflicting_versions_on_one_site_are_summarized(self):
         assets = [{"id": "a", "url": "http://example.test/", "final_url": "http://example.test/",
                    "http_status": 200, "node": "LIKELY", "verdict": "At risk", "version": "24.22.0",
@@ -329,6 +403,67 @@ class GroupingTests(unittest.TestCase):
 
 
 class EngineTests(unittest.TestCase):
+    def test_unresolved_dns_candidate_is_saved_without_http_request(self):
+        async def fake_discover(options, network, control, emit):
+            return [{"target": Target("missing.example.test"), "source": {"public source"},
+                     "ips": set(), "dns": {"status": "NXDOMAIN"},
+                     "scope_roots": {"example.test"}}]
+
+        requests = []
+        def handler(request):
+            requests.append(request)
+            return httpx.Response(200)
+
+        events = []
+        options = ScanOptions([Target("example.test")], passive_dns=False, active_dns=False,
+                              tls_names=False, words=[], interval=0)
+        with patch("radar.engine.discover", fake_discover):
+            asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
+        assets = assessed_assets(events)
+        self.assertEqual({asset["url"] for asset in assets},
+                         {"https://missing.example.test/", "http://missing.example.test/"})
+        self.assertEqual(len([event for event in events if event["type"] == "asset" and
+                              event["asset"]["node"] == "PENDING"]), 2)
+        self.assertTrue(all(asset["node"] == "NOT_ESTABLISHED" and asset["dns"]["status"] == "NXDOMAIN"
+                            for asset in assets))
+        self.assertEqual(requests, [])
+        self.assertEqual(grouped_websites(assets), [])
+        self.assertEqual(next(event for event in events if event["type"] == "finished")
+                         ["coverage"]["dns_unresolved"], 1)
+
+    def test_crawled_page_is_its_own_asset_and_upgrades_one_site(self):
+        async def fake_discover(options, network, control, emit):
+            return [{"target": Target("example.test", "https://example.test/"),
+                     "source": {"input"}, "ips": {"127.0.0.1"},
+                     "dns": {"ips": ["127.0.0.1"]}, "scope_roots": {"example.test"}}]
+
+        def handler(request):
+            if request.url.path == "/":
+                return httpx.Response(200, headers={"content-type": "text/html"},
+                                      text='<a href="/hidden">Hidden page</a>')
+            if request.url.path == "/hidden":
+                return httpx.Response(200, headers={"content-type": "text/html",
+                                                    "x-powered-by": "Node.js/v24.22.0"},
+                                      text="<title>Hidden service</title>")
+            return httpx.Response(404, headers={"content-type": "text/plain"}, text="Not found")
+
+        events = []
+        options = ScanOptions([Target("example.test", "https://example.test/")],
+                              passive_dns=False, active_dns=False, tls_names=False,
+                              words=[], interval=0, crawl=True)
+        with patch("radar.engine.discover", fake_discover):
+            asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
+        assets = {asset["url"]: asset for asset in assessed_assets(events)}
+        self.assertIn("https://example.test/hidden", assets)
+        self.assertEqual(assets["https://example.test/hidden"]["source"], ["application crawl"])
+        self.assertEqual(assets["https://example.test/"]["node"], "NOT_ESTABLISHED")
+        self.assertEqual(assets["https://example.test/hidden"]["node"], "DETECTED")
+        grouped = grouped_websites(assets.values())
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["site_url"], "https://example.test/")
+        self.assertEqual(grouped[0]["node"], "DETECTED")
+        self.assertIn("https://example.test/hidden", grouped[0]["checked_urls"])
+
     def test_wildcard_error_page_is_not_a_node_site_with_rotating_ip(self):
         async def fake_discover(options, network, control, emit):
             return [{"target": Target("account.example.test"), "source": {"active DNS"},
@@ -346,7 +481,7 @@ class EngineTests(unittest.TestCase):
                               tls_names=False, words=[], interval=0)
         with patch("radar.engine.discover", fake_discover):
             asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
-        checked = [event["asset"] for event in events if event["type"] == "asset"]
+        checked = assessed_assets(events)
         self.assertEqual(len(checked), 2)
         self.assertTrue(all(asset.get("wildcard_http_match") for asset in checked))
         self.assertTrue(all(asset["node"] == "NOT_ESTABLISHED" for asset in checked))
@@ -371,7 +506,7 @@ class EngineTests(unittest.TestCase):
                               tls_names=False, words=[], interval=0)
         with patch("radar.engine.discover", fake_discover):
             asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
-        checked = [event["asset"] for event in events if event["type"] == "asset"]
+        checked = assessed_assets(events)
         self.assertEqual(len(checked), 2)
         self.assertTrue(all(asset.get("wildcard_http_match") for asset in checked))
         self.assertEqual(grouped_websites(checked), [])
@@ -404,7 +539,7 @@ class EngineTests(unittest.TestCase):
         with patch("radar.engine.discover", fake_discover), patch("radar.engine.tcp_port_reachable", unreachable):
             asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
         self.assertEqual(len(requested), 2)  # One HTTP and one HTTPS random-name baseline.
-        self.assertEqual([event["asset"]["node"] for event in events if event["type"] == "asset"],
+        self.assertEqual([asset["node"] for asset in assessed_assets(events)],
                          ["NOT_ESTABLISHED", "NOT_ESTABLISHED"])
         finished = next(event for event in events if event["type"] == "finished")
         self.assertEqual(finished["coverage"]["wildcard_tcp_skipped"], 2)
@@ -430,7 +565,7 @@ class EngineTests(unittest.TestCase):
                               active_dns=False, tls_names=False, words=[], interval=0)
         with patch("radar.engine.discover", fake_discover):
             asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
-        asset = next(event["asset"] for event in events if event["type"] == "asset")
+        asset = assessed_assets(events)[0]
         self.assertEqual(requested, ["/", "/_next/static/chunks/runtime.js"])
         self.assertEqual(asset["node"], "LIKELY")
         self.assertEqual(asset["technology_versions"], {"Next.js": "16.3.3"})
@@ -453,7 +588,7 @@ class EngineTests(unittest.TestCase):
                               tls_names=False, words=[], interval=0)
         with patch("radar.engine.discover", fake_discover):
             asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
-        assets = [event["asset"] for event in events if event["type"] == "asset"]
+        assets = assessed_assets(events)
         self.assertEqual(len(assets), 2)
         self.assertTrue(all(asset["node"] == "LIKELY" for asset in assets))
         self.assertEqual(len(grouped_websites(assets)), 1)

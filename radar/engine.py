@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from radar.crawl import crawl_pages
 from radar.detection import fingerprint, next_script_urls, next_version_from_script
 from radar.discovery import discover, resolve_details
-from radar.models import endpoints, utc_now
+from radar.models import Target, endpoints, utc_now
 from radar.network import Network, Stopped, gather_workers
 from radar.site_identity import equivalent_pages
 from radar.tls import inspect_tls
@@ -71,38 +71,6 @@ async def tcp_port_reachable(address, port, timeout):
         return False
 
 
-def merge_crawl(base, pages):
-    """Collect additional technology clues without treating each path as a new website."""
-    rank = {"NOT_ESTABLISHED": 0, "POSSIBLE": 1, "LIKELY": 2, "DETECTED": 3}
-    for page in pages:
-        found = fingerprint(page, [base["host"]])
-        if urlsplit(found["final_url"]).netloc != urlsplit(base["final_url"]).netloc:
-            continue
-        if rank.get(found["node"], 0) > rank.get(base["node"], 0):
-            base["node"] = found["node"]
-            base["confidence"] = found["confidence"]
-        for evidence in found["evidence"]:
-            if evidence not in base["evidence"]:
-                base["evidence"].append(evidence)
-        base["technologies"] = sorted(set(base["technologies"]) | set(found["technologies"]))
-        for name, version in found.get("technology_versions", {}).items():
-            base.setdefault("technology_versions", {}).setdefault(name, version)
-        base["brotli_response"] = base["brotli_response"] or found["brotli_response"]
-        # A second path can have a different backend. Preserve conflicting versions.
-        versions = sorted(set(base["reported_versions"]) | set(found["reported_versions"]))
-        base["reported_versions"] = versions
-        if len(versions) > 1:
-            base["version"] = None
-            base["verdict"] = "Unconfirmed"
-            base["verdict_reason"] = "Different paths reported different Node.js versions."
-        elif len(versions) == 1 and not base.get("version"):
-            base["version"] = versions[0]
-            if found["verdict"] == "At risk":
-                base["verdict"], base["verdict_reason"] = found["verdict"], found["verdict_reason"]
-            elif found["verdict"] == "Fixed version reported" and base["node"] == "DETECTED":
-                base["verdict"], base["verdict_reason"] = found["verdict"], found["verdict_reason"]
-
-
 async def enrich_next_version(item, response, network):
     """Read a few same-origin page assets for the Next.js client version."""
     if (response.status != 200 or "Next.js" not in item.get("technologies", ()) or
@@ -139,6 +107,10 @@ async def run_scan(options, control, emit, transport=None):
     completed = 0
     try:
         await control.checkpoint()
+        if not options.all_addresses:
+            for target in options.targets:
+                for url in endpoints(target, options):
+                    emit({"type": "asset", "asset": pending_asset(url, target)})
 
         def discovery_event(event):
             if event["type"] == "log":
@@ -184,10 +156,9 @@ async def run_scan(options, control, emit, transport=None):
             if not host["ips"]:
                 coverage["dns_unresolved"] += 1
                 emit({"type": "log", "message": f"{target.host}: DNS unresolved; no HTTP request sent."})
-                continue
             if host.get("wildcard"):
                 coverage["wildcard_candidates"] += 1
-            addresses = sorted(host["ips"]) if options.all_addresses else [None]
+            addresses = sorted(host["ips"]) if options.all_addresses and host["ips"] else [None]
             for url in endpoints(target, options):
                 for address in addresses:
                     item = pending_asset(url, target, host["ips"], host["source"], address)
@@ -199,6 +170,12 @@ async def run_scan(options, control, emit, transport=None):
                     if item["id"] in unique:
                         continue
                     unique.add(item["id"])
+                    if not host["ips"]:
+                        item.update(node="NOT_ESTABLISHED",
+                                    verdict_reason="DNS unresolved; HTTP was not attempted.",
+                                    error="DNS unresolved; inspect DNS status. Candidate retained, HTTP not attempted.")
+                        emit({"type": "asset", "asset": item})
+                        continue
                     parsed = urlsplit(url)
                     port = parsed.port or (443 if parsed.scheme == "https" else 80)
                     if (host.get("wildcard") and
@@ -213,6 +190,19 @@ async def run_scan(options, control, emit, transport=None):
         total = queue.qsize()
         emit({"type": "stage", "stage": "HTTP and Node.js signals", "completed": 0, "total": total})
 
+        async def inspect_response(item, response):
+            item.update(fingerprint(response, (target.host for target in options.targets)))
+            if (item.get("wildcard_root") and wildcard_page_match(
+                    item, wildcard_baselines.get((item["wildcard_root"], urlsplit(item["url"]).scheme)))):
+                item["wildcard_http_match"] = True
+                item["node"] = "NOT_ESTABLISHED"
+                item["verdict"] = "Unconfirmed"
+                item["verdict_reason"] = "This hostname serves the same page as a random wildcard DNS name."
+                coverage["wildcard_http_matches"] += 1
+            else:
+                await enrich_next_version(item, response, network)
+            return item
+
         async def worker():
             nonlocal completed
             while not queue.empty():
@@ -226,21 +216,24 @@ async def run_scan(options, control, emit, transport=None):
                         response = await network.request_ip("GET", item["url"], item["connect_ip"])
                     else:
                         response = await network.request("GET", item["url"])
-                    item.update(fingerprint(response, (target.host for target in options.targets)))
-                    if (item.get("wildcard_root") and wildcard_page_match(
-                            item, wildcard_baselines.get((item["wildcard_root"], urlsplit(item["url"]).scheme)))):
-                        item["wildcard_http_match"] = True
-                        item["node"] = "NOT_ESTABLISHED"
-                        item["verdict"] = "Unconfirmed"
-                        item["verdict_reason"] = "This hostname serves the same page as a random wildcard DNS name."
-                        coverage["wildcard_http_matches"] += 1
-                    else:
-                        await enrich_next_version(item, response, network)
-                        if options.crawl and response.status == 200:
-                            pages, report = await crawl_pages(network, response, options.max_pages, item["connect_ip"])
-                            item["crawl"] = report
-                            coverage["crawl_partial"] += int(report["partial"])
-                            merge_crawl(item, pages)
+                    await inspect_response(item, response)
+                    if not item.get("wildcard_http_match") and options.crawl and response.status == 200:
+                        pages, report = await crawl_pages(network, response, options.max_pages, item["connect_ip"])
+                        item["crawl"] = report
+                        coverage["crawl_partial"] += int(report["partial"])
+                        for page in pages:
+                            child = pending_asset(page.url, Target(item["host"]), item["ips"],
+                                                  ["application crawl"], item["connect_ip"])
+                            if child["id"] in unique:
+                                continue
+                            unique.add(child["id"])
+                            child["dns"] = item["dns"]
+                            child["scope_roots"] = item["scope_roots"]
+                            child["wildcard_ambiguous"] = item["wildcard_ambiguous"]
+                            if item.get("wildcard_root"):
+                                child["wildcard_root"] = item["wildcard_root"]
+                            await inspect_response(child, page)
+                            emit({"type": "asset", "asset": child})
                 except Stopped:
                     raise
                 except Exception as exc:
