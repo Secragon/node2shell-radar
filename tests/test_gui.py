@@ -92,6 +92,20 @@ class GuiOptionsTests(unittest.TestCase):
         self.assertEqual(self.window.visible_result_rows()[1]["Address"],
                          "https://www.example.test/")
 
+    def test_identical_restricted_protocols_share_one_dropdown(self):
+        for key, url in (("http", "http://private.example.test/"),
+                         ("https", "https://private.example.test/")):
+            self.window.assets[key] = {"id": key, "url": url, "final_url": url,
+                                       "http_status": 401, "node": "LIKELY",
+                                       "version": None, "verdict": "Unconfirmed",
+                                       "content_sha256": "same-login-page"}
+        self.window.refresh_results()
+        self.assertEqual(self.window.metric_label.text(), "Node.js candidates 1/1")
+        self.assertEqual(self.window.table.rowCount(), 1)
+        self.window.copy_site(0, 0)
+        self.assertEqual([row["Address"] for row in self.window.visible_result_rows()],
+                         ["http://private.example.test/", "https://private.example.test/"])
+
     def test_redirecting_www_address_is_available_in_dropdown(self):
         for key, url in (("root", "https://example.test/"),
                          ("www", "https://www.example.test/")):

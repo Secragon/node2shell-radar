@@ -27,7 +27,9 @@ one website. HTTP upgrades display the HTTPS destination; separate direct
 views appear in a dropdown only when their public pages agree. Shared wildcard
 DNS pages, weak error pages, empty HTTP 200 responses, and redirects outside
 the entered domain scope stay in the journal instead of inflating the site
-count. Requests use a browser-compatible User-Agent that identifies
+count. Wildcard pages that only echo the requested hostname are recognized as
+the same page; identical HTTP/HTTPS 401 or 403 views group into one site.
+Requests use a browser-compatible User-Agent that identifies
 Node2Shell Radar. Public data sources can rate-limit discovery, so the scan
 cannot guarantee every subdomain was found.
 

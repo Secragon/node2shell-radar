@@ -174,6 +174,18 @@ def observe(response):
     }
 
 
+def host_neutral_digest(response):
+    """Hash a page template after replacing the requested hostname it echoes."""
+    hostname = urlsplit(response.url).hostname
+    if not hostname or response.status <= 0 or response.truncated:
+        return None
+    pattern = re.compile(re.escape(hostname), re.I)
+    if not pattern.search(response.text):
+        return None
+    template = pattern.sub("{requested-host}", response.text)
+    return hashlib.sha256(template.encode("utf-8")).hexdigest()
+
+
 def fingerprint(response, scope_hosts=()):
     scope_hosts = tuple(scope_hosts)
     observations = [observe(hop) for hop in response.history] + [observe(response)]
@@ -211,6 +223,7 @@ def fingerprint(response, scope_hosts=()):
         "external_redirect": external_redirect,
         "content_sha256": hashlib.sha256(response.text.encode("utf-8")).hexdigest()
                           if response.status > 0 and not response.truncated else None,
+        "host_neutral_sha256": host_neutral_digest(response),
         "site_identity": describe_site(response),
         "http_status": response.status, "elapsed_ms": response.elapsed_ms,
         "node": node, "confidence": "high" if strong else "medium" if medium else "low" if weak else "none",

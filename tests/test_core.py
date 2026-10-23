@@ -238,6 +238,20 @@ class GroupingTests(unittest.TestCase):
                 self.assertEqual(grouped[0]["node"], "LIKELY")
                 self.assertEqual(grouped[0]["http_status"], status)
 
+    def test_restricted_protocols_group_only_with_identical_responses(self):
+        for status in (401, 403):
+            with self.subTest(status=status):
+                base = {"http_status": status, "node": "LIKELY", "verdict": "Unconfirmed",
+                        "version": None, "connect_ip": None, "content_sha256": "same-login-page"}
+                http = {**base, "id": "http", "url": "http://private.example.test/"}
+                https = {**base, "id": "https", "url": "https://private.example.test/"}
+                grouped = grouped_websites([http, https])
+                self.assertEqual(len(grouped), 1)
+                self.assertEqual(grouped[0]["site_variants"],
+                                 ["http://private.example.test/", "https://private.example.test/"])
+                different = {**https, "content_sha256": "different-login-page"}
+                self.assertEqual(len(grouped_websites([http, different])), 2)
+
     def test_equivalent_dynamic_apex_and_www_pages_share_one_row(self):
         words = " ".join(f"topic{number}" for number in range(120))
         body = f"<title>Example service</title><p>{words}</p>"
@@ -308,6 +322,38 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(grouped_websites(checked), [])
         self.assertTrue(all(request.headers["user-agent"].startswith("Mozilla/5.0 (compatible; Node2Shell-Radar")
                             for request in requests))
+
+    def test_wildcard_403_echoing_requested_host_is_not_a_site(self):
+        async def fake_discover(options, network, control, emit):
+            return [{"target": Target("account.example.test"), "source": {"active DNS"},
+                     "ips": {"127.0.0.2"}, "dns": {"A": "OK"}, "wildcard": False,
+                     "wildcard_root": "example.test", "wildcard_probe": "radar-random.example.test"}]
+
+        def handler(request):
+            host = request.url.host
+            return httpx.Response(403, headers={"content-type": "text/html", "server": "Apache"},
+                                  text=f"<title>Resource not found</title><h2>{host}</h2>"
+                                       "<p>No site configured at this address.</p>")
+
+        events = []
+        options = ScanOptions([Target("example.test")], passive_dns=False, active_dns=False,
+                              tls_names=False, words=[], interval=0)
+        with patch("radar.engine.discover", fake_discover):
+            asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
+        checked = [event["asset"] for event in events if event["type"] == "asset"]
+        self.assertEqual(len(checked), 2)
+        self.assertTrue(all(asset.get("wildcard_http_match") for asset in checked))
+        self.assertEqual(grouped_websites(checked), [])
+
+    def test_wildcard_403_with_distinct_content_remains_a_site(self):
+        baseline = fingerprint(response(url="http://radar-random.example.test/", status=403,
+                                        text="<h2>radar-random.example.test</h2><p>No site configured</p>"),
+                               ["example.test"])
+        candidate = fingerprint(response(url="http://private.example.test/", status=403,
+                                         text="<h2>private.example.test</h2><p>Private login</p>"),
+                                ["example.test"])
+        from radar.engine import wildcard_page_match
+        self.assertFalse(wildcard_page_match(candidate, baseline))
 
     def test_unreachable_wildcard_port_is_not_repeated_for_each_name(self):
         async def fake_discover(options, network, control, emit):

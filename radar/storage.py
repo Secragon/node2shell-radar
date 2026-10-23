@@ -93,7 +93,8 @@ def _preference(asset):
 def _same_site_views(first, second):
     a = urlsplit(first.get("final_url") or first["url"])
     b = urlsplit(second.get("final_url") or second["url"])
-    if (first.get("http_status") != 200 or second.get("http_status") != 200 or
+    first_status, second_status = first.get("http_status"), second.get("http_status")
+    if (first_status not in (200, 401, 403) or second_status not in (200, 401, 403) or
             first.get("connect_ip") != second.get("connect_ip") or
             not a.hostname or not b.hostname or
             a.port not in (None, 80 if a.scheme == "http" else 443) or
@@ -101,6 +102,9 @@ def _same_site_views(first, second):
             a.hostname.removeprefix("www.") != b.hostname.removeprefix("www.")):
         return False
     digest = first.get("content_sha256")
+    if first_status != 200 or second_status != 200:
+        return bool(first_status == second_status and digest and digest != EMPTY_CONTENT_SHA256 and
+                    digest == second.get("content_sha256"))
     if digest and digest == second.get("content_sha256") and digest != EMPTY_CONTENT_SHA256:
         return True
     return equivalent_pages(first, second)

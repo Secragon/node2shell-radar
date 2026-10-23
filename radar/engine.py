@@ -47,6 +47,9 @@ def wildcard_page_match(item, baseline):
     digest = item.get("content_sha256")
     if digest and digest == baseline.get("content_sha256"):
         return True
+    neutral_digest = item.get("host_neutral_sha256")
+    if neutral_digest and neutral_digest == baseline.get("host_neutral_sha256"):
+        return True
     if item["http_status"] == 200:
         return equivalent_pages(item, baseline)
     first, second = item.get("site_identity") or {}, baseline.get("site_identity") or {}
