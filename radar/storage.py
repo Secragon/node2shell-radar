@@ -82,6 +82,7 @@ def _preference(asset):
     original = urlsplit(asset["url"])
     final = urlsplit(asset.get("final_url") or asset["url"])
     return (asset.get("http_status") != 200,
+            original.hostname != final.hostname,
             original.scheme != final.scheme,
             original.path not in ("", "/"),
             final.scheme != "https",

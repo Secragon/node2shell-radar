@@ -143,6 +143,21 @@ class GroupingTests(unittest.TestCase):
         self.assertEqual(grouped[0]["site_variants"],
                          ["https://example.test/", "https://www.example.test/"])
 
+    def test_redirected_subdomain_does_not_hide_matching_www_homepage(self):
+        base = {"http_status": 200, "node": "LIKELY", "verdict": "Unconfirmed",
+                "version": None, "connect_ip": None}
+        assets = [{**base, "id": "apex", "url": "https://example.test/",
+                   "final_url": "https://example.test/", "content_sha256": "homepage"},
+                  {**base, "id": "support", "url": "https://support.example.test/",
+                   "final_url": "https://www.example.test/support/", "content_sha256": "support-page"},
+                  {**base, "id": "www", "url": "https://www.example.test/",
+                   "final_url": "https://www.example.test/", "content_sha256": "homepage"}]
+        grouped = grouped_websites(assets)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["site_variants"],
+                         ["https://example.test/", "https://support.example.test/",
+                          "https://www.example.test/"])
+
     def test_page_signal_upgrades_existing_site_candidate(self):
         base = {"http_status": 200, "verdict": "Unconfirmed", "version": None,
                 "connect_ip": None}
