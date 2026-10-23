@@ -189,6 +189,7 @@ async def run_scan(options, control, emit, transport=None):
                 for address in addresses:
                     item = pending_asset(url, target, host["ips"], host["source"], address)
                     item["dns"] = host["dns"]
+                    item["scope_roots"] = sorted(host.get("scope_roots", ()))
                     item["wildcard_ambiguous"] = host.get("wildcard", False)
                     if host.get("wildcard_root"):
                         item["wildcard_root"] = host["wildcard_root"]

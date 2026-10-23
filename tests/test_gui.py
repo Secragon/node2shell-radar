@@ -92,6 +92,21 @@ class GuiOptionsTests(unittest.TestCase):
         self.assertEqual(self.window.visible_result_rows()[1]["Address"],
                          "https://www.example.test/")
 
+    def test_redirecting_www_address_is_available_in_dropdown(self):
+        for key, url in (("root", "https://example.test/"),
+                         ("www", "https://www.example.test/")):
+            self.window.assets[key] = {"id": key, "url": url,
+                                       "final_url": "https://example.test/",
+                                       "http_status": 200, "node": "LIKELY",
+                                       "version": None, "verdict": "Unconfirmed"}
+        self.window.refresh_results()
+        self.assertEqual(self.window.table.rowCount(), 1)
+        self.assertTrue(self.window.table.item(0, 0).text().startswith("▸ "))
+        self.window.copy_site(0, 0)
+        self.assertEqual(self.window.table.rowCount(), 2)
+        self.assertEqual(self.window.visible_result_rows()[1]["Address"],
+                         "https://www.example.test/")
+
     def test_different_apex_and_www_are_separate_results(self):
         for key, url, digest in (("root", "https://example.test/", "one"),
                                  ("www", "https://www.example.test/", "two")):

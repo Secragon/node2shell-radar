@@ -68,7 +68,7 @@ def _eligible(asset):
             asset.get("node") == "NOT_ESTABLISHED"):
         return False
     # A shared error page with a framework hint is not proof of a live site.
-    return status == 200 or asset.get("node") == "DETECTED"
+    return status in (200, 401, 403) or asset.get("node") == "DETECTED"
 
 
 def _group_key(asset):
@@ -137,7 +137,7 @@ def grouped_websites(assets):
                 join(first_key, second_key)
 
     # An exact page titled with a hostname can reveal aliases that do not
-    # redirect. The title and complete body must agree before they are folded.
+    # redirect. Require a shared input scope and a matching hostname anchor.
     titled_pages = {}
     for key in keys:
         asset = groups[key][0]
@@ -147,11 +147,13 @@ def grouped_websites(assets):
         if (asset.get("http_status") == 200 and digest and
                 identity.get("captured_chars", 0) >= 512 and
                 re.fullmatch(r"[a-z0-9][a-z0-9.-]*\.[a-z]{2,}", title)):
-            marker = (title, digest, key[3])
-            if marker in titled_pages:
-                join(titled_pages[marker], key)
-            else:
-                titled_pages[marker] = key
+            for scope_root in asset.get("scope_roots") or ():
+                marker = (scope_root, title, digest, key[3])
+                titled_pages.setdefault(marker, []).append(key)
+    for (_, title, _, _), matches in titled_pages.items():
+        if any(key[1] == title for key in matches):
+            for key in matches[1:]:
+                join(matches[0], key)
 
     # A strongly identified Node.js error page joins a healthy protocol/www
     # view of the same host instead of creating an extra website row.
@@ -174,10 +176,10 @@ def grouped_websites(assets):
     rank = {"NOT_ESTABLISHED": 0, "POSSIBLE": 1, "LIKELY": 2, "DETECTED": 3}
     for family in clusters.values():
         members = [asset for key in family for asset in groups[key]]
-        healthy = [key for key in family if groups[key][0].get("http_status") == 200]
-        if not healthy and not any(item.get("node") == "DETECTED" for item in members):
+        reachable = [key for key in family if groups[key][0].get("http_status") in (200, 401, 403)]
+        if not reachable and not any(item.get("node") == "DETECTED" for item in members):
             continue
-        variants = healthy or family[:1]
+        variants = reachable or family[:1]
         preferred = min(variants, key=lambda key: _variant_preference(key, groups[key][0]))
         site_url = _site_origin(groups[preferred][0].get("final_url") or groups[preferred][0]["url"])
         primary = max(members, key=lambda item: (rank.get(item.get("node"), 0),
@@ -186,10 +188,18 @@ def grouped_websites(assets):
         shown = dict(primary)
         shown["site_url"] = site_url
         shown["http_status"] = groups[preferred][0].get("http_status")
-        shown["site_variants"] = [site_url] + sorted({
+        direct_variants = {
             _site_origin(groups[key][0].get("final_url") or groups[key][0]["url"])
             for key in variants
-        } - {site_url})
+        }
+        # A redirecting hostname is still an address the user checked. Show it
+        # beneath the destination, while omitting protocol-only upgrades.
+        redirected_hosts = {
+            _site_origin(item["url"]) for item in members
+            if urlsplit(item["url"]).hostname !=
+               urlsplit(item.get("final_url") or item["url"]).hostname
+        }
+        shown["site_variants"] = [site_url] + sorted((direct_variants | redirected_hosts) - {site_url})
         shown["checked_urls"] = sorted({url for item in members
                                         for url in (item["url"], item.get("final_url")) if url})
         shown["node"] = max((item.get("node", "NOT_ESTABLISHED") for item in members),

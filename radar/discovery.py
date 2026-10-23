@@ -259,7 +259,8 @@ async def thc_names(domain, network, log):
 
 
 async def discover(options, network, control, emit):
-    discovered = {(t.host, t.url): {"target": t, "source": {"input"}, "ips": set()} for t in options.targets}
+    discovered = {(t.host, t.url): {"target": t, "source": {"input"}, "ips": set(),
+                                   "scope_roots": {t.host}} for t in options.targets}
     roots = sorted({t.host for t in options.targets})
     log = lambda message: emit({"type": "log", "message": message})
     for root in roots:
@@ -319,8 +320,10 @@ async def discover(options, network, control, emit):
                     ambiguous = bool(wildcard and result.ips and result.ips <= wildcard)
                     key = (name, None)
                     if key not in discovered:
-                        discovered[key] = {"target": Target(name), "source": set(), "ips": result.ips}
+                        discovered[key] = {"target": Target(name), "source": set(), "ips": result.ips,
+                                           "scope_roots": set()}
                     host = discovered[key]
+                    host["scope_roots"].add(root)
                     host["source"].update(sources)
                     host["dns"] = result.document()
                     host["wildcard"] = ambiguous

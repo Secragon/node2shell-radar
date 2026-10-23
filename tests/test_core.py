@@ -138,7 +138,10 @@ class GroupingTests(unittest.TestCase):
                    "final_url": "https://example.test/"},
                   {**base, "id": "www", "url": "https://www.example.test/",
                    "final_url": "https://example.test/"}]
-        self.assertEqual(len(grouped_websites(assets)), 1)
+        grouped = grouped_websites(assets)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(grouped[0]["site_variants"],
+                         ["https://example.test/", "https://www.example.test/"])
 
     def test_page_signal_upgrades_existing_site_candidate(self):
         base = {"http_status": 200, "verdict": "Unconfirmed", "version": None,
@@ -187,7 +190,8 @@ class GroupingTests(unittest.TestCase):
         grouped = grouped_websites(assets)
         self.assertEqual(len(grouped), 1)
         self.assertEqual(grouped[0]["site_url"], "https://www.example.test/")
-        self.assertEqual(grouped[0]["site_variants"], ["https://www.example.test/"])
+        self.assertEqual(grouped[0]["site_variants"],
+                         ["https://www.example.test/", "http://example.test/"])
 
     def test_foreign_redirect_is_not_an_in_scope_site(self):
         asset = {"id": "alias", "url": "http://alias.example.test/",
@@ -205,6 +209,19 @@ class GroupingTests(unittest.TestCase):
             {"id": "empty", "url": "https://empty.example.test/", **empty},
             {"id": "error", "url": "https://error.example.test/", **error},
         ]), [])
+
+    def test_restricted_node_site_remains_a_candidate(self):
+        for status in (401, 403):
+            with self.subTest(status=status):
+                url = "https://private.example.test/"
+                asset = {"id": url, "url": url, **fingerprint(response(
+                    url=url, status=status,
+                    headers={"x-powered-by": "Express", "content-type": "text/html"},
+                    text="<title>Sign in</title>"), ["example.test"])}
+                grouped = grouped_websites([asset])
+                self.assertEqual(len(grouped), 1)
+                self.assertEqual(grouped[0]["node"], "LIKELY")
+                self.assertEqual(grouped[0]["http_status"], status)
 
     def test_equivalent_dynamic_apex_and_www_pages_share_one_row(self):
         words = " ".join(f"topic{number}" for number in range(120))
@@ -227,7 +244,7 @@ class GroupingTests(unittest.TestCase):
         assets = []
         for host in ("about.example.test", "www.old.example.test"):
             url = f"https://{host}/"
-            assets.append({"id": url, "url": url,
+            assets.append({"id": url, "url": url, "scope_roots": ["example.test"],
                            **fingerprint(response(url=url, text=body,
                                                   headers={"content-type": "text/html",
                                                            "x-powered-by": "Express"}), ["example.test"])})
@@ -235,6 +252,20 @@ class GroupingTests(unittest.TestCase):
         self.assertEqual(len(grouped), 1)
         self.assertEqual(grouped[0]["site_url"], "https://about.example.test/")
         self.assertEqual(len(grouped[0]["site_variants"]), 2)
+
+    def test_identical_pages_from_different_input_scopes_stay_separate(self):
+        body = "<title>app.first.test</title><p>" + "story " * 150 + "</p>"
+        assets = []
+        for host, scope in (("app.first.test", "first.test"),
+                            ("app.second.test", "second.test")):
+            url = f"https://{host}/"
+            assets.append({"id": url, "url": url, "scope_roots": [scope],
+                           **fingerprint(response(url=url, text=body,
+                                                  headers={"content-type": "text/html",
+                                                           "x-powered-by": "Express"}), [scope])})
+        grouped = grouped_websites(assets)
+        self.assertEqual([item["site_url"] for item in grouped],
+                         ["https://app.first.test/", "https://app.second.test/"])
 
 
 class EngineTests(unittest.TestCase):
