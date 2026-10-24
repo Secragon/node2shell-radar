@@ -49,6 +49,12 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(found["node"], "LIKELY")
         self.assertEqual(found["verdict"], "Unconfirmed")
 
+    def test_strapi_header_is_node_candidate_without_claiming_runtime_version(self):
+        found = fingerprint(response(headers={"x-powered-by": "Strapi"}), ["example.test"])
+        self.assertEqual(found["node"], "LIKELY")
+        self.assertIn("Strapi", found["technologies"])
+        self.assertIsNone(found["version"])
+
     def test_next_assets_are_not_runtime_proof(self):
         found = fingerprint(response(text='<script src="/_next/static/chunks/app.js"></script>',
                                      headers={"content-type": "text/html"}), ["example.test"])

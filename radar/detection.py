@@ -166,7 +166,8 @@ def observe(response):
                               ("NestJS", r"\bNestJS\b"), ("Fastify", r"\bFastify\b"),
                               ("Hapi", r"\bHapi\b"), ("AdonisJS", r"\bAdonisJS\b"),
                               ("Sails.js", r"\bSails(?:\.js)?\b"),
-                              ("Meteor", r"\bMeteor\b"), ("Hono", r"\bHono\b")):
+                              ("Meteor", r"\bMeteor\b"), ("Hono", r"\bHono\b"),
+                              ("Strapi", r"\bStrapi\b")):
             if re.search(pattern, value, re.I):
                 technologies.add(name)
                 add("framework_header", key, f"{name} response header; Node.js runtime unconfirmed",

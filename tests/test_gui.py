@@ -204,7 +204,10 @@ class GuiOptionsTests(unittest.TestCase):
         self.assertEqual(window.progress.value(), 1)
         asset = {"id": "https://node.example.test/", "url": "https://node.example.test/",
                  "http_status": 200, "node": "DETECTED", "version": "20.0.0",
-                 "verdict": "Unconfirmed"}
+                 "verdict": "Unconfirmed", "active_check": {
+                     "status": "Parser observed", "assessment": "Parser reached; version unknown.",
+                     "checks": [{"name": "Strapi login", "status": "Parser observed",
+                                 "method": "POST"}]}}
         window.on_event({"type": "asset", "asset": asset})
         window.on_event({"type": "finished", "status": "COMPLETED", "completed": 1})
         window.refresh_results()
@@ -225,6 +228,7 @@ class GuiOptionsTests(unittest.TestCase):
             window.export_button.click()
         exported = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
         self.assertEqual(exported["results"][0]["Address"], asset["url"])
+        self.assertEqual(exported["results"][0]["Active checks"][0]["name"], "Strapi login")
         window.search.setText("absent")
         self.assertEqual(window.visible_result_rows(), [])
 

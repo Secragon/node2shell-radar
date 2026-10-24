@@ -198,8 +198,8 @@ class MainWindow(QMainWindow):
             "This is the standard passive detection and is always part of a scan.")
         self.passive_check.setEnabled(False)
         self.active_check = self._option(detection_layout, "Check Brotli request parsing", False,
-            "Compare three small OPTIONS requests with valid Brotli streams on each Node.js candidate site.",
-            "Shows whether Brotli JSON parsing is reachable on this path. It cannot confirm the Node.js patch level or RCE.")
+            "Run safe Brotli JSON checks on candidate sites, including Strapi's paired login test when its route is identified.",
+            "Shows whether Brotli request parsing is reachable on tested paths. It cannot confirm the Node.js patch level or RCE.")
         config_grid.addWidget(detection_box, 0, 2, Qt.AlignTop)
         for column in range(3):
             config_grid.setColumnStretch(column, 1)
@@ -681,6 +681,9 @@ class MainWindow(QMainWindow):
             result = {self.table.horizontalHeaderItem(col).text(): self.table.item(row, col).text()
                       for col in range(self.table.columnCount())}
             result["Address"] = asset.get("site_url") or asset["url"]
+            active = asset.get("active_check") or {}
+            result["Active assessment"] = active.get("assessment", active.get("reason", ""))
+            result["Active checks"] = asset.get("active_checks") or active.get("checks", [])
             results.append(result)
         return results
 
@@ -707,11 +710,15 @@ class MainWindow(QMainWindow):
         reason = escape(asset.get("verdict_reason", ""))
         checks = asset.get("active_checks") or ([asset["active_check"]] if asset.get("active_check") else [])
         active_lines = "<br>".join(
-            f"• {escape(check.get('status', 'Unknown'))}"
+            f"• {escape(check.get('name', check.get('method', 'Check')))}: "
+            f"{escape(check.get('status', 'Unknown'))}"
             + (f" ({escape(check['url'])})" if check.get("url") else "")
             + f": {escape(check.get('reason', ''))}"
             for check in checks[:12]
         ) or "Off."
+        active_summary = (asset.get("active_check") or {}).get("assessment", "")
+        if active_summary:
+            active_lines = f"{escape(active_summary)}<br>{active_lines}"
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Node.js site details")
         dialog.setTextFormat(Qt.RichText)

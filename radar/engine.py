@@ -5,7 +5,7 @@ import threading
 import uuid
 from urllib.parse import urlsplit
 
-from radar.active import check_brotli_json
+from radar.active import check_active_paths
 from radar.crawl import crawl_pages
 from radar.detection import fingerprint, next_script_urls, next_version_from_script
 from radar.discovery import discover, resolve_details
@@ -217,7 +217,8 @@ async def run_scan(options, control, emit, transport=None):
             key = (response.url, item.get("connect_ip"))
             if key not in active_tasks:
                 active_tasks[key] = asyncio.create_task(
-                    check_brotli_json(network, response.url, item.get("connect_ip")))
+                    check_active_paths(network, response.url, item.get("connect_ip"),
+                                       item.get("verdict", "Unconfirmed")))
             item["active_check"] = await active_tasks[key]
 
         async def worker():

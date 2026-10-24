@@ -12,11 +12,16 @@ options** exposes editable DNS names, deeper DNS checks, certificate names,
 site crawling, per-IP checks, TLS verification, concurrency, timeout, and
 request interval.
 Additional web ports can be edited on the main screen.
-The optional active check sends three small `OPTIONS` requests to candidate sites.
-It uses complete, valid Brotli streams to compare JSON parsing behavior. A
-positive result means Brotli request parsing was observed on that path; it does
-not prove which process decoded the body or whether its Brotli library is
-vulnerable. The check does not change the version-based verdict.
+The optional active check runs only when selected. It compares three small
+`OPTIONS` requests on each candidate site. It also tests Strapi's default login
+route with two made-up login attempts: ordinary JSON first, then the identical
+valid Brotli-compressed JSON if the first response identifies Strapi's route.
+The results show each tested path and combine the evidence. A positive result
+means Brotli request parsing was observed on that path; it does not prove which
+process decoded the body or whether its Brotli library is vulnerable. The
+check does not change the version-based verdict.
+For Fastify, an inconclusive `OPTIONS` response may mean that the tested path
+has no body-parsing route; it does not rule out other routes.
 
 ## What a scan does
 

@@ -264,15 +264,19 @@ def grouped_websites(assets):
         shown["technology_versions"] = {name: next(iter(values)) for name, values in technology_versions.items()
                                         if len(values) == 1}
         shown["brotli_response"] = any(item.get("brotli_response") for item in members)
+        active_summaries = []
         active_checks = []
         for item in members:
             check = item.get("active_check")
-            if check and check not in active_checks:
-                active_checks.append(check)
+            if check and check not in active_summaries:
+                active_summaries.append(check)
+                for detail in check.get("checks", [check]):
+                    if detail not in active_checks:
+                        active_checks.append(detail)
         active_rank = {"Skipped": 0, "Inconclusive": 1, "Rejected here": 2, "Parser observed": 3}
         shown["active_checks"] = active_checks
-        if active_checks:
-            shown["active_check"] = max(active_checks,
+        if active_summaries:
+            shown["active_check"] = max(active_summaries,
                                         key=lambda check: active_rank.get(check.get("status"), -1))
         shown["proxy"] = sorted({name for item in members for name in item.get("proxy", ())})
         shown["evidence"] = []
@@ -311,7 +315,8 @@ def export_report(path, run, assets):
                                    indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-RESULT_COLUMNS = ("Address", "HTTP", "Node.js", "Version", "Active check", "Result")
+RESULT_COLUMNS = ("Address", "HTTP", "Node.js", "Version", "Active check", "Result",
+                  "Active assessment", "Active checks")
 
 
 def export_visible_results(path, rows):
@@ -325,6 +330,8 @@ def export_visible_results(path, rows):
                 row = {}
                 for column in RESULT_COLUMNS:
                     value = result.get(column, "")
+                    if isinstance(value, (dict, list)):
+                        value = json.dumps(value, ensure_ascii=False)
                     if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
                         value = "'" + value
                     row[column] = value

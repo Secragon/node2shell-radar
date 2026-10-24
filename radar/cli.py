@@ -19,7 +19,7 @@ def main(argv=None):
     parser.add_argument("--extra-ports", action="store_true", help="Check common nonstandard web ports")
     parser.add_argument("--crawl", action="store_true", help="Follow a bounded set of same-origin GET links")
     parser.add_argument("--all-addresses", action="store_true", help="Check every resolved address")
-    parser.add_argument("--active-check", action="store_true", help="Check reachable Brotli JSON request parsing with valid compressed bodies")
+    parser.add_argument("--active-check", action="store_true", help="Run safe Brotli request parsing checks, including Strapi's paired login test")
     parser.add_argument("--output", help="Export report to JSON or CSV")
     args = parser.parse_args(argv)
     try:
