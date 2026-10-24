@@ -65,7 +65,7 @@ class GuiOptionsTests(unittest.TestCase):
 
     def test_option_help_opens_small_tooltip_without_dialog(self):
         buttons = [button for button in self.window.findChildren(QToolButton)
-                   if button.objectName() == "help"]
+                   if button.objectName() in {"help", "helpWarning"}]
         self.assertEqual(len(buttons), 10)
         for button in buttons:
             self.assertEqual(button.text(), "?")
@@ -74,6 +74,10 @@ class GuiOptionsTests(unittest.TestCase):
             self.assertIn("width='360'", button.toolTip())
         active_help = next(button for button in buttons
                            if button.accessibleName() == "Help: Active check if unclear")
+        self.assertEqual(active_help.objectName(), "helpWarning")
+        self.assertEqual(self.window.active_check.objectName(), "activeCheck")
+        self.assertNotEqual(self.window.active_check.accent,
+                            self.window.extra_ports.accent)
         self.assertIn("Brotli", active_help.toolTip())
         self.window.show()
         self.app.processEvents()

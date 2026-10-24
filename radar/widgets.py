@@ -6,9 +6,10 @@ from PySide6.QtWidgets import QCheckBox, QLabel, QStyle, QStyleOptionButton, QSt
 
 
 class StyledCheckBox(QCheckBox):
-    def __init__(self, text="", parent=None, accent="#267f84"):
+    def __init__(self, text="", parent=None, accent="#2b8064", warning=False):
         super().__init__(text, parent)
         self.accent = QColor(accent)
+        self.warning = warning
 
     def paintEvent(self, event):
         option = QStyleOptionButton()
@@ -22,9 +23,11 @@ class StyledCheckBox(QCheckBox):
         box = indicator.adjusted(1, 1, -1, -1)
         enabled, checked = self.isEnabled(), self.isChecked()
         painter.setRenderHint(QPainter.Antialiasing)
-        border = self.accent if checked and enabled else QColor("#b7c6ca" if enabled else "#cbd5d8")
+        border = self.accent if checked and enabled else QColor(
+            "#d9a68e" if self.warning and enabled else "#b7c6d4" if enabled else "#cbd5dc")
         fill = self.accent if checked and enabled else QColor(
-            "#dce7e9" if checked else "#ffffff" if enabled else "#f1f5f5")
+            "#e3e9f2" if checked else "#fffaf6" if self.warning and enabled
+            else "#ffffff" if enabled else "#f1f4f8")
         painter.setPen(QPen(border, 1.3))
         painter.setBrush(fill)
         painter.drawRoundedRect(box, 3, 3)
@@ -33,7 +36,7 @@ class StyledCheckBox(QCheckBox):
             mark.moveTo(box.left() + 3, box.top() + 7)
             mark.lineTo(box.left() + 6, box.top() + 10)
             mark.lineTo(box.right() - 3, box.top() + 4)
-            painter.setPen(QPen(QColor("#ffffff" if enabled else "#789397"),
+            painter.setPen(QPen(QColor("#ffffff" if enabled else "#8294a7"),
                                 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
             painter.setBrush(Qt.NoBrush)
             painter.drawPath(mark)
@@ -58,8 +61,8 @@ class CopyToast(QLabel):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = self.rect().adjusted(1, 1, -1, -1)
-        painter.setPen(QPen(QColor(83, 102, 112, 90), 1))
-        painter.setBrush(QColor(38, 59, 67, 150))
+        painter.setPen(QPen(QColor(75, 90, 110, 90), 1))
+        painter.setBrush(QColor(39, 49, 59, 174))
         painter.drawRoundedRect(rect, 9, 9)
         painter.setPen(QPen(QColor("#ffffff"), 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         mark = QPainterPath()

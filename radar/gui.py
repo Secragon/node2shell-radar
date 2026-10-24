@@ -25,52 +25,58 @@ from radar.widgets import CopyToast, StyledCheckBox
 
 
 STYLE = """
-QWidget { background: #f7fafb; color: #263b43; font-family: 'Segoe UI'; font-size: 13px; }
-QMainWindow { background: #f7fafb; }
-QLabel#title { font-size: 24px; font-weight: 700; color: #173f4d; }
-QLabel#metric { color: #3f6975; font-size: 15px; font-weight: 550; }
-QLabel#subtitle { color: #667d87; font-size: 12px; }
-QGroupBox { background: #ffffff; border: 1px solid #dbe9e9; border-radius: 12px;
+QWidget { background: #f8fafc; color: #27313b; font-family: 'Segoe UI'; font-size: 13px; }
+QMainWindow { background: #f8fafc; }
+QLabel#title { font-size: 24px; font-weight: 700; color: #242a32; }
+QLabel#metric { color: #526477; font-size: 15px; font-weight: 550; }
+QLabel#subtitle { color: #687785; font-size: 12px; }
+QGroupBox { background: #ffffff; border: 1px solid #e2e8ef; border-radius: 12px;
             margin-top: 12px; padding: 15px 12px 10px; font-weight: 650; }
-QGroupBox::title { subcontrol-origin: margin; left: 11px; padding: 0 6px; color: #315865; }
-QPlainTextEdit, QLineEdit, QTextBrowser, QSpinBox, QDoubleSpinBox { background: #ffffff; border: 1px solid #d5e3e6;
-             border-radius: 7px; padding: 6px; selection-background-color: #d8eeed; }
-QPlainTextEdit:focus, QLineEdit:focus { border-color: #77b9b8; }
-QPushButton { background: #e9f3f2; color: #285b62; border: 1px solid #d1e8e5;
+QGroupBox::title { subcontrol-origin: margin; left: 11px; padding: 0 6px; color: #344353; }
+QPlainTextEdit, QLineEdit, QTextBrowser, QSpinBox, QDoubleSpinBox { background: #ffffff; border: 1px solid #d7e0ea;
+             border-radius: 7px; padding: 6px; selection-background-color: #e4efff; }
+QPlainTextEdit:focus, QLineEdit:focus { border-color: #80ad9b; }
+QPushButton { background: #eaf1fb; color: #314761; border: 1px solid #d4e1f0;
               border-radius: 7px; padding: 7px 12px; font-weight: 600; }
-QPushButton:hover { background: #d9ece9; }
-QPushButton:disabled { color: #a2adb3; background: #edf1f2; border-color: #dce6e7; }
-QPushButton#primary { background: #267f84; color: #ffffff; border: none; font-weight: 700; }
-QPushButton#primary:hover { background: #1d6c72; }
-QPushButton#primary:disabled { background: #cce4e3; color: #285b62;
-                               border: 1px solid #9dc9c8; }
-QPushButton#pauseButton { background: #e9f3f2; color: #285b62; }
+QPushButton:hover { background: #dce9f9; }
+QPushButton:disabled { color: #a2adba; background: #f0f3f6; border-color: #e4e9ee; }
+QPushButton#primary { background: #2b8064; color: #ffffff; border: none; font-weight: 700; }
+QPushButton#primary:hover { background: #226b52; }
+QPushButton#primary:disabled { background: #d8e9df; color: #547964;
+                               border: 1px solid #bad6c5; }
+QPushButton#pauseButton { background: #eaf1fb; color: #314761; }
 QPushButton#pauseButton:checked { background: #fff0cc; color: #785618;
                                    border: 1px solid #e6c671; }
-QPushButton#pauseButton:disabled { background: #edf1f2; color: #a2adb3;
-                                    border: 1px solid #dce6e7; }
+QPushButton#pauseButton:disabled { background: #f0f3f6; color: #a2adba;
+                                    border: 1px solid #e4e9ee; }
 QPushButton#stopButton { background: #fbe9e6; color: #a33c35;
                           border: 1px solid #eec7c2; }
 QPushButton#stopButton:hover { background: #f7d9d4; }
-QPushButton#stopButton:disabled { background: #edf1f2; color: #a2adb3;
-                                   border: 1px solid #dce6e7; }
-QPushButton#advancedButton { background: #e4f1f1; color: #315e66; border-color: #c9e1e1; }
-QCheckBox { spacing: 7px; }
+QPushButton#stopButton:disabled { background: #f0f3f6; color: #a2adba;
+                                   border: 1px solid #e4e9ee; }
+QPushButton#advancedButton { background: #e4effb; color: #345c83; border-color: #c9ddf2; }
+QPushButton#advancedButton:hover { background: #d5e8fb; }
+QCheckBox { spacing: 7px; font-weight: 550; }
 QCheckBox::indicator { width: 16px; height: 16px; }
+QCheckBox#activeCheck { color: #965147; font-weight: 700; }
 QWidget#optionRow { background: transparent; }
-QTableWidget { background: #ffffff; alternate-background-color: #f8fbfb;
-               border: 1px solid #dce8e9; gridline-color: #ecf1f1;
-               selection-background-color: #e2f2f0; selection-color: #173f4d; }
-QHeaderView::section { background: #edf6f5; color: #4c6e76; padding: 8px;
+QWidget#activeOptionRow { background: #fff8f2; border: 1px solid #f1ddd0; border-radius: 8px; }
+QTableWidget { background: #ffffff; alternate-background-color: #f8fbff;
+               border: 1px solid #e1e8f0; gridline-color: #edf1f5;
+               selection-background-color: #e4efff; selection-color: #24384c; }
+QHeaderView::section { background: #eef4fb; color: #526477; padding: 8px;
                        border: none; font-weight: 650; }
-QProgressBar { background: #e7efef; border: none; border-radius: 3px;
+QProgressBar { background: #e7edf5; border: none; border-radius: 3px;
                min-height: 6px; max-height: 6px; text-align: center; }
-QProgressBar::chunk { background: #267f84; border-radius: 3px; }
-QToolTip { background: #ffffff; color: #263b43; border: 1px solid #c7dddf; padding: 8px; }
-QToolButton#help { background: #e8f3f8; color: #527c93; border: 1px solid #cce4ef;
-                   border-radius: 10px; font-weight: 800; }
-QToolButton#help:hover { background: #d7ebf4; }
-QSplitter::handle { background: #e2eeee; height: 5px; }
+QProgressBar::chunk { background: #2b8064; border-radius: 3px; }
+QToolTip { background: #ffffff; color: #27313b; border: 1px solid #cbd8e7; padding: 8px; }
+QToolButton#help { background: #e7f2ff; color: #426892; border: 1px solid #c9dff4;
+                   border-radius: 11px; font-size: 12px; font-weight: 800; }
+QToolButton#help:hover { background: #cfe7ff; color: #214d78; border-color: #9cc8ed; }
+QToolButton#helpWarning { background: #fff0de; color: #a05b22; border: 1px solid #f4d5b2;
+                          border-radius: 11px; font-size: 12px; font-weight: 800; }
+QToolButton#helpWarning:hover { background: #ffe0ba; color: #824214; }
+QSplitter::handle { background: #edf1f5; height: 5px; }
 """
 
 
@@ -96,9 +102,9 @@ def help_html(description, impact):
             "</td></tr></table>")
 
 
-def help_button(title, explanation):
+def help_button(title, explanation, warning=False):
     button = QToolButton()
-    button.setObjectName("help")
+    button.setObjectName("helpWarning" if warning else "help")
     button.setText("?")
     button.setFixedSize(22, 22)
     button.setToolTip(explanation)
@@ -210,7 +216,8 @@ class MainWindow(QMainWindow):
         self.passive_check.setEnabled(False)
         self.active_check = self._option(detection_layout, "Active check if unclear", False,
             "Run safe Brotli JSON checks on candidate sites, including Strapi's paired login test when its route is identified.",
-            "Shows whether Brotli request parsing is reachable on tested paths. It cannot confirm the Node.js patch level or RCE.")
+            "Shows whether Brotli request parsing is reachable on tested paths. It cannot confirm the Node.js patch level or RCE.",
+            warning=True)
         config_grid.addWidget(detection_box, 0, 2, Qt.AlignTop)
         for column in range(3):
             config_grid.setColumnStretch(column, 1)
@@ -371,18 +378,22 @@ class MainWindow(QMainWindow):
         self.progress.setTextVisible(False)
         layout.addWidget(self.progress)
 
-    def _option(self, parent_layout, label, checked, description, impact):
+    def _option(self, parent_layout, label, checked, description, impact, warning=False):
         explanation = help_html(description, impact)
         row = QWidget()
-        row.setObjectName("optionRow")
+        row.setObjectName("activeOptionRow" if warning else "optionRow")
         cell = QHBoxLayout(row)
-        cell.setContentsMargins(8, 0, 0, 0)
-        checkbox = StyledCheckBox(label)
+        cell.setContentsMargins(8, 3 if warning else 0, 5 if warning else 0,
+                                3 if warning else 0)
+        checkbox = StyledCheckBox(label, accent="#c06450" if warning else "#2b8064",
+                                  warning=warning)
+        if warning:
+            checkbox.setObjectName("activeCheck")
         checkbox.setChecked(checked)
         checkbox.setToolTip(explanation)
         cell.addWidget(checkbox)
         cell.addStretch()
-        cell.addWidget(help_button(label, explanation))
+        cell.addWidget(help_button(label, explanation, warning))
         parent_layout.addWidget(row)
         return checkbox
 
