@@ -1,81 +1,65 @@
 <div align="center">
   <img src="radar/data/app-icon.png" alt="Node2Shell Radar icon" width="112">
   <h1>Node2Shell Radar</h1>
-  <p>Find Node.js websites. Identify deployed runtimes that need the Brotli fix.</p>
+  <p>Find your Node.js websites. See which ones need attention.</p>
+  <p><a href="https://github.com/Secragon/node2shell-radar/releases/latest">Download for Windows or Linux</a></p>
 </div>
 
-Node2Shell Radar is a desktop asset-discovery and exposure-triage tool for **CVE-2026-111497**. Enter domains or URLs to discover reachable websites and inspect public Node.js clues.
+Node2Shell Radar is a desktop **Node2Shell Scanner** for discovering websites that may use Node.js and reviewing their exposure to **CVE-2026-111497**. Enter a domain or URL, run a scan, and review the evidence in one place. The standard scan looks for websites and reads public responses; the optional active check is off until you select it.
 
-The desktop layout follows PHP2Shell Radar's three-column workflow: targets,
-discovery, and detection, followed by the results table and journal. **More
-options** exposes editable DNS names, deeper DNS checks, certificate names,
-site crawling, per-IP checks, TLS verification, concurrency, timeout, and
-request interval.
-Additional web ports can be edited on the main screen.
-The optional active check runs only when selected. It compares three small
-`OPTIONS` requests on each candidate site. It also tests Strapi's default login
-route with two made-up login attempts: ordinary JSON first, then the identical
-valid Brotli-compressed JSON if the first response identifies Strapi's route.
-The results show each tested path and combine the evidence. A positive result
-means Brotli request parsing was observed on that path; it does not prove which
-process decoded the body or whether its Brotli library is vulnerable. The
-check does not change the version-based verdict.
-For Fastify, an inconclusive `OPTIONS` response may mean that the tested path
-has no body-parsing route; it does not rule out other routes.
+![Illustrative scan of example.test in Node2Shell Radar](assets/app-preview.png)
 
-## What a scan does
+*Illustrative interface preview using example data. It is not a scan of a real organization.*
 
-1. **Find websites.** Public subdomain sources, common DNS names and TLS certificate names are enabled at launch. Each name is resolved and checked over HTTP or HTTPS before it counts as reached. Extra ports, per-IP checks and bounded site crawling are separate options.
-2. **Recognize Node.js clues.** A direct Node.js response header is stronger evidence than a framework header. Passive headers, cookies and HTML identify candidates across server and full-stack frameworks, including Express, Next.js, Nuxt, Remix, React Router, SvelteKit, Astro and Gatsby. Their pages may be static or use another runtime, so framework evidence alone does not confirm a running Node.js service. A reported framework version is shown separately from the Node.js runtime version.
-3. **Assess version evidence.** A Node.js version reported over HTTP is compared with the upstream security releases. Missing, conflicting or vendor-specific versions stay unconfirmed.
-4. **Review the rest.** After completion, *Show other websites* reveals reached sites without Node.js runtime evidence. Checked addresses and evidence remain in the saved session; JSON/CSV export contains the currently visible result rows.
+## Download and run
 
-Results group paths and equivalent HTTP/HTTPS, apex/`www`, or host aliases under
-one website. HTTP upgrades display the HTTPS destination; separate direct
-views appear in a dropdown only when their public pages agree. Shared wildcard
-DNS pages, weak error pages, empty HTTP 200 responses, and redirects outside
-the entered domain scope stay in the journal instead of inflating the site
-count. Wildcard pages that only echo the requested hostname are recognized as
-the same page; identical HTTP/HTTPS 401 or 403 views group into one site.
-Unresolved DNS candidates and each checked crawl page remain separate assets
-in the saved session, while reached pages of one site share a result row.
-Requests use a browser-compatible User-Agent that identifies
-Node2Shell Radar. Public data sources can rate-limit discovery, so the scan
-cannot guarantee every subdomain was found.
+| Platform | Download | Run |
+| --- | --- | --- |
+| Windows 10/11, x64 | [`Node2Shell-Radar-windows-x64.exe`](https://github.com/Secragon/node2shell-radar/releases/latest) | Double-click the single EXE. No installer or Python needed. |
+| Linux, x64 | [`Node2Shell-Radar-linux-x86_64.tar.gz`](https://github.com/Secragon/node2shell-radar/releases/latest) | Extract the archive, then run `./Node2Shell-Radar` in a desktop session. No Python needed. |
 
-| Result | Meaning |
+Each [release](https://github.com/Secragon/node2shell-radar/releases/latest) includes `SHA256SUMS` for checking the downloads. Linux needs standard desktop graphics libraries. Sessions are saved on your machine; you choose where to save exports.
+
+## What happens during a scan
+
+1. **Enter a domain or URL.** A domain checks its normal web ports. A full URL checks the address you entered.
+2. **Find websites.** Public subdomain sources, common DNS names and TLS certificate names help find more sites. A name counts as a reached website only after a web response is received. Extra ports and deeper discovery are optional.
+3. **Recognize Node.js clues.** Radar looks at public response headers, cookies and pages. It can identify Node.js directly or find frameworks such as Next.js and Nuxt that make a site worth reviewing. A framework alone does not prove that the public site runs on Node.js.
+4. **Review the result.** The table shows the website, its Node.js signal, any reported version and the assessment. Double-click a row for the evidence and its limits. Related addresses can expand beneath one website; click an address to copy it.
+5. **Filter and export.** Search the results or reveal other reached websites. **Export results** saves the rows currently visible as JSON or CSV. The **Journal** shows scan activity separately.
+
+| Result | What it means |
 | --- | --- |
-| **Fixed version** | An HTTP response reports an upstream fixed Node.js version; the serving process and its selected Brotli decoder remain unverified. |
-| **At risk** | The reported Node.js version predates the upstream fix; a vendor backport or different decoder may change the actual patch state. |
-| **Unconfirmed** | The version is missing, conflicting, vendor-specific, or not tied to a confirmed Node.js runtime. |
+| **Fixed version** | The site reports a Node.js version with the upstream fix. Its actual decoder build is not verified remotely. |
+| **At risk** | The site reports an older Node.js version. A vendor-provided fix may still be present. |
+| **Unconfirmed** | Radar cannot establish the Node.js version or patch state from the available evidence. |
 
-The upstream fixed releases are **Node.js 22.23.4, 24.22.1 and 26.12.1**. The vulnerable component is the Brotli **decoder**. The scanner records its patch status as **Unverified remotely**, independently of the reported Node.js version and active request parsing result. Serving a Brotli-compressed response does not prove the server accepts or decompresses Brotli request bodies. A site may also be exposed through outbound responses that its Node.js process fetches. Some distribution builds use a system Brotli library, so a fixed Node.js version string alone is not full patch verification. Radar does not send malformed Brotli streams or claim remote code-execution confirmation. [Node.js advisory](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases), [Imperva's validation](https://www.imperva.com/blog/node2shell-from-brotli-data-to-remote-code-execution/), [Express Brotli request parsing](https://expressjs.com/en/guide/migrating-5/), [Debian's system-library note](https://security-tracker.debian.org/tracker/CVE-2026-111497).
+**Active check** sends a small number of additional requests to candidate sites when you select it. It reports whether Brotli request parsing appears reachable on the tested paths; it cannot prove a server is vulnerable, patched or exploitable. The check is off by default. Passive signals can also be hidden or changed by proxies, so no result is a complete inventory or a guarantee of safety.
 
-## Run from source
+## Build from source
 
-Python 3.11+ is required for development. On Windows:
+Python 3.11+ is required. On Windows:
 
 ```powershell
 py -3.11 -m venv .venv
-.venv\Scripts\python -m pip install -e .
-.venv\Scripts\pythonw -m radar
+.venv\Scripts\python.exe -m pip install -e ".[build]"
+.venv\Scripts\pythonw.exe -m radar
 ```
 
 On Linux:
 
-```bash
+```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
+.venv/bin/python -m pip install -e '.[build]'
 .venv/bin/python -m radar
 ```
 
-The CLI uses the same engine and can export JSON or CSV:
+Run the offline tests with `python -m unittest discover -s tests -v`. Platform packages can be built with `scripts/build_windows.py` or `scripts/build_linux.py`. Tagged versions build both packages in [GitHub Actions](.github/workflows/release.yml).
 
-```bash
-python -m radar --cli example.com --no-active-dns --output report.json
-python -m radar --cli app.example.com --output report.csv
-```
+## Privacy and responsible use
 
-Build a single-file Windows GUI executable with `scripts/build_windows.py` on Windows, or a portable Linux archive with `scripts/build_linux.py` on Linux. Each writes to one `release/` directory. Builds are platform-specific; PyInstaller does not cross-compile. `scripts/write_checksums.py release` writes SHA-256 sums once both platform packages are present.
+Scan only sites you own or are authorized to assess. Sessions and exports stay on your machine; Radar does not upload results to Secragon. Discovery may contact public services, and active checks send requests to target sites. Saved sessions can contain hostnames and URLs, so avoid putting secrets in URL queries.
 
-Node2Shell Radar is released under [Apache-2.0](LICENSE).
+Website discovery techniques were adapted from [PHP2Shell Radar](https://github.com/Secragon/php2shell-radar). For a suspected issue in this tool, see [SECURITY.md](SECURITY.md).
+
+Licensed under [Apache 2.0](LICENSE). Copyright © 2026 Secragon.

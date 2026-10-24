@@ -1,0 +1,88 @@
+name: Test and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows x64
+            runner: windows-2022
+            build_command: python scripts/build_windows.py
+            output: Node2Shell-Radar-windows-x64.exe
+          - platform: Linux x64
+            runner: ubuntu-22.04
+            build_command: python scripts/build_linux.py
+            output: Node2Shell-Radar-linux-x86_64.tar.gz
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -e ".[build]"
+      - name: Install Linux graphics libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-xinerama0
+      - name: Run offline tests
+        run: python -m unittest discover -s tests -v
+      - name: Check GUI startup
+        run: python scripts/smoke_gui.py
+      - name: Build package
+        run: ${{ matrix.build_command }}
+      - name: Name release file
+        shell: python
+        env:
+          PACKAGE_NAME: ${{ matrix.output }}
+        run: |
+          import os
+          from pathlib import Path
+          source = next(Path("release").glob("*.exe" if os.name == "nt" else "*.tar.gz"))
+          source.rename(source.with_name(os.environ["PACKAGE_NAME"]))
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.output }}
+          path: release/${{ matrix.output }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v6
+        with:
+          path: release
+          merge-multiple: true
+      - name: Write SHA-256 checksums
+        run: python scripts/write_checksums.py release
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release/* --clobber
+          else
+            gh release create "$RELEASE_TAG" release/* --verify-tag --title "Node2Shell Radar $RELEASE_TAG" --notes "Desktop downloads for Windows and Linux. See the README for usage and result meanings."
+          fi
