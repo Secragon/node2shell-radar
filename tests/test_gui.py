@@ -58,6 +58,7 @@ class GuiOptionsTests(unittest.TestCase):
 
     def test_active_probe_can_be_selected_and_reaches_engine(self):
         self.assertTrue(self.window.active_check.isEnabled())
+        self.assertEqual(self.window.active_check.text(), "Active check if unclear")
         self.assertFalse(self.window.active_check.isChecked())
         self.window.active_check.setChecked(True)
         self.assertTrue(self.window._options().active_check)
@@ -169,10 +170,8 @@ class GuiOptionsTests(unittest.TestCase):
         with patch("radar.gui.QMessageBox.exec") as open_details:
             self.window.show_details(1, 0)
         open_details.assert_not_called()
-        self.window.search.setText("plain")
-        self.assertEqual(self.window.table.rowCount(), 2)
-        self.assertEqual(self.window.table.item(0, 0).text(),
-                         "Other discovered sites · Node.js not detected")
+        self.assertFalse(hasattr(self.window, "search"))
+        self.assertEqual(self.window.table.rowCount(), 3)
 
     def test_window_icon_has_small_sizes_and_no_inventory_control(self):
         sizes = {size.width() for size in self.window.windowIcon().availableSizes()}
@@ -231,8 +230,7 @@ class GuiOptionsTests(unittest.TestCase):
         self.assertEqual(exported["results"][0]["Address"], asset["url"])
         self.assertEqual(exported["results"][0]["Decoder patch"], "Unverified remotely")
         self.assertEqual(exported["results"][0]["Active checks"][0]["name"], "Strapi login")
-        window.search.setText("absent")
-        self.assertEqual(window.visible_result_rows(), [])
+        self.assertEqual(len(window.visible_result_rows()), 1)
 
     def test_scan_buttons_show_start_pause_resume_and_stop_states(self):
         class FakeSignal:

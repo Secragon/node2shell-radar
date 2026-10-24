@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
             "Read the normal HTTP response for Node.js runtime, framework and version indicators.",
             "This is the standard passive detection and is always part of a scan.")
         self.passive_check.setEnabled(False)
-        self.active_check = self._option(detection_layout, "Check Brotli request parsing", False,
+        self.active_check = self._option(detection_layout, "Active check if unclear", False,
             "Run safe Brotli JSON checks on candidate sites, including Strapi's paired login test when its route is identified.",
             "Shows whether Brotli request parsing is reachable on tested paths. It cannot confirm the Node.js patch level or RCE.")
         config_grid.addWidget(detection_box, 0, 2, Qt.AlignTop)
@@ -292,13 +292,6 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addLayout(actions)
-        search_row = QHBoxLayout()
-        search_row.addWidget(QLabel("Node.js candidates"))
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search Node.js sites…")
-        self.search.textChanged.connect(self.refresh_results)
-        search_row.addWidget(self.search, 1)
-        left_layout.addLayout(search_row)
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(["Address", "HTTP", "Node.js", "Version", "Active check", "Result"])
         self.table.setAlternatingRowColors(True)
@@ -560,24 +553,13 @@ class MainWindow(QMainWindow):
         self.metric_label.setText(f"Node.js candidates {len(node_rows)}/{len(rows)}")
         if not (self.show_other.isChecked() and self.finished):
             other_rows = []
-        query = self.search.text().strip().lower()
-        if query:
-            def matches(item):
-                return any(query in url.lower() for url in
-                           [item.get("site_url") or item["url"], *item.get("checked_urls", ())])
-            node_rows = [item for item in node_rows if matches(item)]
-            other_rows = [item for item in other_rows if matches(item)]
         display = []
         def add_group(group):
             display.append(group)
             site_url = group.get("site_url") or group["url"]
             variants = [url for url in group.get("site_variants", ()) if url != site_url]
-            reveal = site_url in self.expanded_sites or (
-                query and any(query in url.lower() for url in variants))
-            if reveal:
+            if site_url in self.expanded_sites:
                 for variant in variants:
-                    if query and site_url not in self.expanded_sites and query not in variant.lower():
-                        continue
                     child = dict(group)
                     child["id"] = f"{group['id']} [variant {variant}]"
                     child["site_url"] = variant
