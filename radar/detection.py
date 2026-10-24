@@ -104,7 +104,7 @@ def _in_scope(url, roots):
                (root.startswith("www.") and host == root[4:]) for root in roots)
 
 
-def next_script_urls(response, limit=8):
+def next_script_urls(response, limit=16):
     """Bound same-origin Next.js assets used by the ordinary page load."""
     if "html" not in response.headers.get("content-type", "").lower():
         return []

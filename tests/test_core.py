@@ -693,6 +693,36 @@ class EngineTests(unittest.TestCase):
         self.assertIsNone(asset["version"])
         self.assertEqual(asset["verdict"], "Unconfirmed")
 
+    def test_engine_reads_next_version_in_twelfth_script(self):
+        async def fake_discover(options, network, control, emit):
+            return [{"target": Target("example.test", "https://example.test/"),
+                     "source": {"input"}, "ips": {"127.0.0.1"},
+                     "dns": {"ips": ["127.0.0.1"]}}]
+
+        requested = []
+
+        def handler(request):
+            requested.append(request.url.path)
+            if request.url.path == "/":
+                scripts = "".join(f'<script src="/_next/static/chunks/{index}.js"></script>'
+                                  for index in range(12))
+                return httpx.Response(200, headers={"x-powered-by": "Next.js",
+                                                    "content-type": "text/html"}, text=scripts)
+            body = ('window.next={version:"16.3.5",appDir:!0}'
+                    if request.url.path.endswith("/11.js") else "other bundle")
+            return httpx.Response(200, text=body)
+
+        events = []
+        options = ScanOptions([Target("example.test", "https://example.test/")],
+                              passive_dns=False, active_dns=False, tls_names=False,
+                              words=[], interval=0, active_check=False)
+        with patch("radar.engine.discover", fake_discover):
+            asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
+        asset = assessed_assets(events)[0]
+        self.assertEqual(asset["technology_versions"], {"Next.js": "16.3.5"})
+        self.assertEqual(len(requested), 13)
+        self.assertNotIn("active_check", asset)
+
     def test_engine_reports_only_observed_node_signal(self):
         async def fake_discover(options, network, control, emit):
             return [{"target": Target("example.test"), "source": {"input"},
