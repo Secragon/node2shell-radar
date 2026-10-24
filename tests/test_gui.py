@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionButton
+from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionButton, QToolButton, QToolTip
 from shiboken6 import delete
 
 from radar.gui import MainWindow
@@ -62,6 +62,32 @@ class GuiOptionsTests(unittest.TestCase):
         self.assertFalse(self.window.active_check.isChecked())
         self.window.active_check.setChecked(True)
         self.assertTrue(self.window._options().active_check)
+
+    def test_option_help_opens_small_tooltip_without_dialog(self):
+        buttons = [button for button in self.window.findChildren(QToolButton)
+                   if button.objectName() == "help"]
+        self.assertEqual(len(buttons), 10)
+        for button in buttons:
+            self.assertEqual(button.text(), "?")
+            self.assertIn("What it does", button.toolTip())
+            self.assertIn("Impact", button.toolTip())
+            self.assertIn("width='360'", button.toolTip())
+        active_help = next(button for button in buttons
+                           if button.accessibleName() == "Help: Active check if unclear")
+        self.assertIn("Brotli", active_help.toolTip())
+        self.window.show()
+        self.app.processEvents()
+        QToolTip.hideText()
+        with patch("radar.gui.QMessageBox.information") as information:
+            active_help.click()
+        self.app.processEvents()
+        information.assert_not_called()
+        self.assertTrue(QToolTip.isVisible())
+        tips = [widget for widget in self.app.topLevelWidgets()
+                if widget.isVisible() and widget.metaObject().className() == "QTipLabel"]
+        self.assertEqual(len(tips), 1)
+        self.assertLessEqual(tips[0].width(), 440)
+        QToolTip.hideText()
 
     def test_possible_node_site_is_shown_as_candidate(self):
         asset = {"id": "https://candidate.example.test/", "url": "https://candidate.example.test/",

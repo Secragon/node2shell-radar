@@ -7,14 +7,14 @@ from pathlib import Path
 import re
 import sys
 
-from PySide6.QtCore import QStandardPaths, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QPoint, QStandardPaths, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFileDialog, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
     QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPlainTextEdit, QProgressBar, QPushButton, QSpinBox, QSplitter,
-    QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout,
+    QTableWidget, QTableWidgetItem, QToolButton, QToolTip, QVBoxLayout,
     QWidget,
 )
 
@@ -66,6 +66,7 @@ QHeaderView::section { background: #edf6f5; color: #4c6e76; padding: 8px;
 QProgressBar { background: #e7efef; border: none; border-radius: 3px;
                min-height: 6px; max-height: 6px; text-align: center; }
 QProgressBar::chunk { background: #267f84; border-radius: 3px; }
+QToolTip { background: #ffffff; color: #263b43; border: 1px solid #c7dddf; padding: 8px; }
 QToolButton#help { background: #e8f3f8; color: #527c93; border: 1px solid #cce4ef;
                    border-radius: 10px; font-weight: 800; }
 QToolButton#help:hover { background: #d7ebf4; }
@@ -88,14 +89,23 @@ class ScanThread(QThread):
             self.event.emit({"type": "finished", "status": "FAILED", "error": str(exc)})
 
 
-def help_button(title, description, impact):
+def help_html(description, impact):
+    return ("<table width='360' cellspacing='0' cellpadding='0'><tr><td>"
+            f"<b>What it does</b><br>{escape(description)}"
+            f"<br><br><b>Impact</b><br>{escape(impact)}"
+            "</td></tr></table>")
+
+
+def help_button(title, explanation):
     button = QToolButton()
     button.setObjectName("help")
     button.setText("?")
-    button.setFixedSize(21, 21)
-    body = f"{description}\n\nImpact: {impact}"
-    button.setToolTip(f"<div style='width:340px;white-space:normal'>{escape(body).replace(chr(10), '<br>')}</div>")
-    button.clicked.connect(lambda: QMessageBox.information(button, title, body))
+    button.setFixedSize(22, 22)
+    button.setToolTip(explanation)
+    button.setAccessibleName(f"Help: {title}")
+    button.setCursor(Qt.PointingHandCursor)
+    button.clicked.connect(lambda: QToolTip.showText(
+        button.mapToGlobal(QPoint(0, button.height() + 4)), explanation, button))
     return button
 
 
@@ -362,16 +372,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.progress)
 
     def _option(self, parent_layout, label, checked, description, impact):
+        explanation = help_html(description, impact)
         row = QWidget()
         row.setObjectName("optionRow")
         cell = QHBoxLayout(row)
         cell.setContentsMargins(8, 0, 0, 0)
         checkbox = StyledCheckBox(label)
         checkbox.setChecked(checked)
-        checkbox.setToolTip(f"<div style='width:340px'>{escape(description)}<br><br>Impact: {escape(impact)}</div>")
+        checkbox.setToolTip(explanation)
         cell.addWidget(checkbox)
         cell.addStretch()
-        cell.addWidget(help_button(label, description, impact))
+        cell.addWidget(help_button(label, explanation))
         parent_layout.addWidget(row)
         return checkbox
 
