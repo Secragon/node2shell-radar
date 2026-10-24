@@ -58,7 +58,6 @@ QPushButton#advancedButton { background: #e4effb; color: #345c83; border-color: 
 QPushButton#advancedButton:hover { background: #d5e8fb; }
 QCheckBox { spacing: 7px; font-weight: 550; }
 QCheckBox::indicator { width: 16px; height: 16px; }
-QCheckBox#activeCheck { color: #965147; font-weight: 700; }
 QWidget#optionRow { background: transparent; }
 QTableWidget { background: #ffffff; alternate-background-color: #f8fbff;
                border: 1px solid #e1e8f0; gridline-color: #edf1f5;
@@ -213,7 +212,7 @@ class MainWindow(QMainWindow):
             "Read the normal HTTP response for Node.js runtime, framework and version indicators.",
             "This is the standard passive detection and is always part of a scan.")
         self.passive_check.setEnabled(False)
-        self.active_check = self._option(detection_layout, "Active check if unclear", False,
+        self.active_check = self._option(detection_layout, "Active check", False,
             "Run safe Brotli JSON checks on candidate sites, including Strapi's paired login test when its route is identified.",
             "Shows whether Brotli request parsing is reachable on tested paths. It cannot confirm the Node.js patch level or RCE.",
             warning=True)
@@ -385,8 +384,6 @@ class MainWindow(QMainWindow):
         cell.setContentsMargins(8, 0, 0, 0)
         checkbox = StyledCheckBox(label, accent="#c06450" if warning else "#2b8064",
                                   warning=warning)
-        if warning:
-            checkbox.setObjectName("activeCheck")
         checkbox.setChecked(checked)
         checkbox.setToolTip(explanation)
         cell.addWidget(checkbox)

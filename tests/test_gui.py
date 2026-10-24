@@ -58,7 +58,7 @@ class GuiOptionsTests(unittest.TestCase):
 
     def test_active_probe_can_be_selected_and_reaches_engine(self):
         self.assertTrue(self.window.active_check.isEnabled())
-        self.assertEqual(self.window.active_check.text(), "Active check if unclear")
+        self.assertEqual(self.window.active_check.text(), "Active check")
         self.assertFalse(self.window.active_check.isChecked())
         self.window.active_check.setChecked(True)
         self.assertTrue(self.window._options().active_check)
@@ -73,9 +73,8 @@ class GuiOptionsTests(unittest.TestCase):
             self.assertIn("Impact", button.toolTip())
             self.assertIn("width='360'", button.toolTip())
         active_help = next(button for button in buttons
-                           if button.accessibleName() == "Help: Active check if unclear")
+                           if button.accessibleName() == "Help: Active check")
         self.assertEqual(active_help.objectName(), "helpWarning")
-        self.assertEqual(self.window.active_check.objectName(), "activeCheck")
         self.assertNotEqual(self.window.active_check.accent,
                             self.window.extra_ports.accent)
         self.assertIn("Brotli", active_help.toolTip())
