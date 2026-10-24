@@ -180,8 +180,54 @@ class GuiOptionsTests(unittest.TestCase):
         with patch("radar.gui.QMessageBox.exec") as open_details:
             self.window.show_details(1, 0)
         open_details.assert_not_called()
-        self.assertFalse(hasattr(self.window, "search"))
+        self.assertEqual(self.window.search_label.text(), "All discovered sites")
+        self.assertEqual(self.window.search.placeholderText(), "Search all sites…")
         self.assertEqual(self.window.table.rowCount(), 3)
+
+    def test_search_filters_grouped_results_and_export(self):
+        for key, url, node, digest in (
+            ("root", "https://example.test/", "LIKELY", "same"),
+            ("www", "https://www.example.test/", "LIKELY", "same"),
+            ("plain", "https://plain.example.test/", "NOT_ESTABLISHED", "other"),
+        ):
+            self.window.assets[key] = {
+                "id": key, "url": url, "final_url": url, "http_status": 200,
+                "node": node, "version": None, "verdict": "Unconfirmed",
+                "content_sha256": digest,
+                "discovery_source": "secondary-signal" if key == "www" else "",
+            }
+        self.window.finished = True
+        self.window.show_other.setChecked(True)
+        self.window.refresh_results()
+        self.assertEqual(self.window.table.rowCount(), 3)
+
+        self.window.search.setText("secondary-signal")
+        self.assertFalse(self.window.table.isRowHidden(0))
+        self.assertTrue(self.window.table.isRowHidden(1))
+        self.assertTrue(self.window.table.isRowHidden(2))
+        self.assertEqual([row["Address"] for row in self.window.visible_result_rows()],
+                         ["https://example.test/"])
+
+        self.window.search.setText("plain.example.test")
+        self.assertTrue(self.window.table.isRowHidden(0))
+        self.assertFalse(self.window.table.isRowHidden(1))
+        self.assertFalse(self.window.table.isRowHidden(2))
+        self.assertEqual([row["Address"] for row in self.window.visible_result_rows()],
+                         ["https://plain.example.test/"])
+
+        self.window.run_document = {"id": "gui-search"}
+        path = Path(self.temp.name) / "filtered.json"
+        with patch("radar.gui.QFileDialog.getSaveFileName",
+                   return_value=(str(path), "JSON results (*.json)")):
+            self.window.export()
+        exported = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual([row["Address"] for row in exported["results"]],
+                         ["https://plain.example.test/"])
+
+        self.window.show_other.setChecked(False)
+        self.assertEqual(self.window.search_label.text(), "Node.js candidates")
+        self.assertEqual(self.window.search.placeholderText(), "Search Node.js candidates…")
+        self.assertEqual(self.window.visible_result_rows(), [])
 
     def test_window_icon_has_small_sizes_and_no_inventory_control(self):
         sizes = {size.width() for size in self.window.windowIcon().availableSizes()}

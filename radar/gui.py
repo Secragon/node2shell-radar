@@ -2,6 +2,7 @@
 
 import asyncio
 from html import escape
+import json
 from pathlib import Path
 import re
 import sys
@@ -292,6 +293,14 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addLayout(actions)
+        search_row = QHBoxLayout()
+        self.search_label = QLabel("Node.js candidates")
+        search_row.addWidget(self.search_label)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search Node.js candidates…")
+        self.search.textChanged.connect(self.filter_rows)
+        search_row.addWidget(self.search, 1)
+        left_layout.addLayout(search_row)
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(["Address", "HTTP", "Node.js", "Version", "Active check", "Result"])
         self.table.setAlternatingRowColors(True)
@@ -572,6 +581,15 @@ class MainWindow(QMainWindow):
             for group in other_rows:
                 add_group(group)
         self.display_rows = display
+        sources_by_url = {}
+        for source in self.assets.values():
+            sources_by_url.setdefault(source.get("url"), []).append(source)
+        self.searchable_rows = [
+            json.dumps([asset] + [source for url in asset.get("checked_urls", ())
+                                  for source in sources_by_url.get(url, ())],
+                       ensure_ascii=False, default=str).casefold()
+            if not asset.get("_section") else "" for asset in display
+        ]
         selected = self.table.currentItem().data(Qt.UserRole) if self.table.currentItem() else None
         self.table.blockSignals(True)
         self.table.clearSelection()
@@ -640,6 +658,24 @@ class MainWindow(QMainWindow):
             if selected == asset["id"]:
                 self.table.selectRow(index)
         self.table.blockSignals(False)
+        self.search_label.setText("All discovered sites" if self.show_other.isChecked()
+                                  else "Node.js candidates")
+        self.search.setPlaceholderText("Search all sites…" if self.show_other.isChecked()
+                                       else "Search Node.js candidates…")
+        self.filter_rows()
+
+    def filter_rows(self):
+        needle = self.search.text().casefold()
+        section_row = None
+        for row, asset in enumerate(self.display_rows):
+            if asset.get("_section"):
+                section_row = row
+                continue
+            self.table.setRowHidden(row, needle not in self.searchable_rows[row])
+        if section_row is not None:
+            self.table.setRowHidden(section_row,
+                                    not any(not self.table.isRowHidden(row)
+                                            for row in range(section_row + 1, self.table.rowCount())))
 
     def copy_site(self, row, column):
         if not 0 <= row < len(self.display_rows):
@@ -666,7 +702,7 @@ class MainWindow(QMainWindow):
     def visible_result_rows(self):
         results = []
         for row, asset in enumerate(self.display_rows):
-            if asset.get("_section"):
+            if asset.get("_section") or self.table.isRowHidden(row):
                 continue
             result = {self.table.horizontalHeaderItem(col).text(): self.table.item(row, col).text()
                       for col in range(self.table.columnCount())}
