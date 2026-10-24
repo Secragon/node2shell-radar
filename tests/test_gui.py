@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionButton, QToolButton, QToolTip
 from shiboken6 import delete
@@ -276,6 +276,9 @@ class GuiOptionsTests(unittest.TestCase):
             indicator = box.style().subElementRect(QStyle.SE_CheckBoxIndicator, option, box)
             self.assertGreaterEqual(indicator.left(), 0)
             self.assertLess(indicator.right(), box.width())
+        self.assertEqual(window.active_check.parent().objectName(), "optionRow")
+        self.assertEqual(window.active_check.mapTo(window.centralWidget(), QPoint()).x(),
+                         window.passive_check.mapTo(window.centralWidget(), QPoint()).x())
         self.assertIsInstance(window.copy_toast, CopyToast)
         self.assertIs(window.copy_toast.parent(), window.table.viewport())
         self.assertGreater(window.progress.width(), window.table.width() // 2)

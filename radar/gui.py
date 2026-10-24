@@ -60,7 +60,6 @@ QCheckBox { spacing: 7px; font-weight: 550; }
 QCheckBox::indicator { width: 16px; height: 16px; }
 QCheckBox#activeCheck { color: #965147; font-weight: 700; }
 QWidget#optionRow { background: transparent; }
-QWidget#activeOptionRow { background: #fff8f2; border: 1px solid #f1ddd0; border-radius: 8px; }
 QTableWidget { background: #ffffff; alternate-background-color: #f8fbff;
                border: 1px solid #e1e8f0; gridline-color: #edf1f5;
                selection-background-color: #e4efff; selection-color: #24384c; }
@@ -381,10 +380,9 @@ class MainWindow(QMainWindow):
     def _option(self, parent_layout, label, checked, description, impact, warning=False):
         explanation = help_html(description, impact)
         row = QWidget()
-        row.setObjectName("activeOptionRow" if warning else "optionRow")
+        row.setObjectName("optionRow")
         cell = QHBoxLayout(row)
-        cell.setContentsMargins(8, 3 if warning else 0, 5 if warning else 0,
-                                3 if warning else 0)
+        cell.setContentsMargins(8, 0, 0, 0)
         checkbox = StyledCheckBox(label, accent="#c06450" if warning else "#2b8064",
                                   warning=warning)
         if warning:
