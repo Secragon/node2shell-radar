@@ -14,6 +14,9 @@ FRAMEWORK_VERSION = re.compile(
     r"\b(Next\.js|Nuxt(?:\.js)?|SvelteKit|Remix|React Router|Gatsby|Astro|RedwoodJS|SolidStart)\b"
     r"(?:[/\s]+v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?))?", re.I)
 NEXT_EXPORTED_VERSION = re.compile(r"\bversion\s*:\s*function\(\)\s*\{\s*return\s+([a-zA-Z_$][\w$]*)\s*\}")
+NEXT_LITERAL_VERSION = re.compile(
+    r"\bwindow\.next\s*=\s*\{\s*version\s*:\s*['\"](\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?)['\"]"
+)
 PROXIES = (("Cloudflare", "cf-ray"), ("CloudFront", "x-amz-cf-id"),
            ("Varnish", "x-varnish"), ("Fastly", "x-served-by"),
            ("Imperva", "x-iinfo"))
@@ -129,6 +132,9 @@ def next_version_from_script(text):
     """Read the exported Next.js client version without executing JavaScript."""
     if "window.next" not in text:
         return None
+    literal = NEXT_LITERAL_VERSION.search(text)
+    if literal:
+        return literal.group(1)
     for exported in NEXT_EXPORTED_VERSION.finditer(text):
         name = re.escape(exported.group(1))
         assignment = re.search(

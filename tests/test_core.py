@@ -96,6 +96,8 @@ class DetectionTests(unittest.TestCase):
                                 "https://example.test/portal/_next/static/chunks/app.js"])
         script = 'version:function(){return k}};let k="16.3.3";window.next={version:n.version}'
         self.assertEqual(next_version_from_script(script), "16.3.3")
+        self.assertEqual(next_version_from_script('window.next={version:"16.1.6",appDir:!0}'), "16.1.6")
+        self.assertIsNone(next_version_from_script('React.version="19.3.0";window.next={appDir:!0}'))
         self.assertIsNone(next_version_from_script('let k="16.3.3";window.next={version:n.version}'))
 
     def test_modern_framework_html_markers_are_candidates_only(self):

@@ -596,12 +596,14 @@ class MainWindow(QMainWindow):
                       "▸ " if expandable else "")
             node_version = asset.get("version")
             framework_versions = asset.get("technology_versions") or {}
+            technologies = asset.get("technologies") or ()
             framework_name = next((name for name in ("Next.js", "Nuxt", "Remix", "React Router",
                                                   "SvelteKit", "Astro", "Gatsby", "RedwoodJS", "SolidStart")
-                                   if framework_versions.get(name)), None)
+                                   if framework_versions.get(name) or name in technologies), None)
             framework_version = framework_versions.get(framework_name) if framework_name else None
             version_label = (f"Node.js {node_version}" if node_version else
-                             f"{framework_name} {framework_version}" if framework_version else "—")
+                             f"{framework_name} {framework_version}" if framework_version else
+                             framework_name or "—")
             values = [prefix + site_url,
                       asset.get("http_status") or "—",
                       asset.get("node", "Unknown").replace("_", " ").title() if found else "",
@@ -624,6 +626,8 @@ class MainWindow(QMainWindow):
                     cell.setToolTip("Reported Node.js version; the serving process and Brotli decoder build are unverified")
                 elif col == 3 and framework_version:
                     cell.setToolTip(f"{framework_name} version; Node.js runtime version is not known")
+                elif col == 3 and framework_name:
+                    cell.setToolTip(f"{framework_name} detected; framework and Node.js runtime versions are not known")
                 elif col == 4 and asset.get("active_check"):
                     cell.setToolTip(asset["active_check"].get("reason", ""))
                 if col == 5 and found:

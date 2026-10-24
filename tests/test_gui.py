@@ -91,6 +91,16 @@ class GuiOptionsTests(unittest.TestCase):
         self.assertEqual(self.window.table.item(0, 3).text(), "Nuxt 4.1.2")
         self.assertIn("Node.js runtime version is not known", self.window.table.item(0, 3).toolTip())
 
+    def test_detected_framework_without_version_is_visible(self):
+        asset = {"id": "https://candidate.example.test/", "url": "https://candidate.example.test/",
+                 "http_status": 200, "node": "LIKELY", "version": None,
+                 "technologies": ["Next.js"], "technology_versions": {},
+                 "verdict": "Unconfirmed"}
+        self.window.assets[asset["id"]] = asset
+        self.window.refresh_results()
+        self.assertEqual(self.window.table.item(0, 3).text(), "Next.js")
+        self.assertIn("versions are not known", self.window.table.item(0, 3).toolTip())
+
     def test_equivalent_site_addresses_expand_below_one_candidate(self):
         for key, url in (("root", "https://example.test/"),
                          ("www", "https://www.example.test/")):
