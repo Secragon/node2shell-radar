@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from radar.engine import Control, run_scan
-from radar.models import ScanOptions, WEB_PORTS, default_words, parse_targets
+from radar.models import REMOTE_PATCH_STATUS, ScanOptions, WEB_PORTS, default_words, parse_targets
 from radar.storage import EMPTY_CONTENT_SHA256, Store, export_visible_results, grouped_websites
 from radar.widgets import CopyToast, StyledCheckBox
 
@@ -101,8 +101,8 @@ def help_button(title, description, impact):
 class MainWindow(QMainWindow):
     NODE_ROWS = {"DETECTED", "LIKELY", "POSSIBLE"}
     VERDICT_COLORS = {
-        "Fixed version": ("#e4f5e9", "#1f7140"),
-        "Fixed version reported": ("#e4f5e9", "#1f7140"),
+        "Fixed version": ("#e8f1f9", "#305f83"),
+        "Fixed version reported": ("#e8f1f9", "#305f83"),
         "At risk": ("#fde8e6", "#a53e3a"),
         "Unconfirmed": ("#fff4d8", "#896a1e"),
     }
@@ -638,7 +638,9 @@ class MainWindow(QMainWindow):
                     if len(checked) > 1:
                         tip += "\nAlso checked: " + ", ".join(checked)
                     cell.setToolTip(tip)
-                elif col == 3 and framework_version and not node_version:
+                elif col == 3 and node_version:
+                    cell.setToolTip("Reported Node.js version; the serving process and Brotli decoder build are unverified")
+                elif col == 3 and framework_version:
                     cell.setToolTip(f"{framework_name} version; Node.js runtime version is not known")
                 elif col == 4 and asset.get("active_check"):
                     cell.setToolTip(asset["active_check"].get("reason", ""))
@@ -646,6 +648,8 @@ class MainWindow(QMainWindow):
                     background, foreground = self.VERDICT_COLORS.get(value, ("#fff4d8", "#896a1e"))
                     cell.setBackground(QColor(background))
                     cell.setForeground(QColor(foreground))
+                    cell.setToolTip(asset.get("verdict_reason", "") + "\nDecoder patch: " +
+                                    asset.get("decoder_patch_status", REMOTE_PATCH_STATUS))
                 self.table.setItem(index, col, cell)
             if selected == asset["id"]:
                 self.table.selectRow(index)
@@ -681,6 +685,7 @@ class MainWindow(QMainWindow):
             result = {self.table.horizontalHeaderItem(col).text(): self.table.item(row, col).text()
                       for col in range(self.table.columnCount())}
             result["Address"] = asset.get("site_url") or asset["url"]
+            result["Decoder patch"] = asset.get("decoder_patch_status", REMOTE_PATCH_STATUS)
             active = asset.get("active_check") or {}
             result["Active assessment"] = active.get("assessment", active.get("reason", ""))
             result["Active checks"] = asset.get("active_checks") or active.get("checks", [])
@@ -708,6 +713,7 @@ class MainWindow(QMainWindow):
         ) or "No Node.js runtime indicator was found."
         urls = "<br>".join(escape(url) for url in checked_urls)
         reason = escape(asset.get("verdict_reason", ""))
+        decoder_patch = escape(asset.get("decoder_patch_status", REMOTE_PATCH_STATUS))
         checks = asset.get("active_checks") or ([asset["active_check"]] if asset.get("active_check") else [])
         active_lines = "<br>".join(
             f"• {escape(check.get('name', check.get('method', 'Check')))}: "
@@ -723,7 +729,8 @@ class MainWindow(QMainWindow):
         dialog.setWindowTitle("Node.js site details")
         dialog.setTextFormat(Qt.RichText)
         dialog.setText(f"<b>{escape(asset.get('site_url') or asset['url'])}</b><br>"
-                       f"{reason}<br><br><b>Active check</b><br>{active_lines}"
+                       f"{reason}<br><b>Decoder patch:</b> {decoder_patch}"
+                       f"<br><br><b>Active check</b><br>{active_lines}"
                        f"<br><br><b>Evidence</b><br>{evidence_lines}"
                        f"<br><br><b>Checked addresses</b><br>{urls}")
         dialog.exec()

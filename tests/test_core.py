@@ -25,7 +25,7 @@ class VersionTests(unittest.TestCase):
         for older, fixed in (("22.23.3", "22.23.4"), ("24.22.0", "24.22.1"),
                              ("26.12.0", "26.12.1")):
             self.assertEqual(assess_version(older)[0], "At risk")
-            self.assertEqual(assess_version(fixed)[0], "Fixed version reported")
+            self.assertEqual(assess_version(fixed)[0], "Fixed version")
 
     def test_unknown_and_vendor_builds_are_not_fixed(self):
         self.assertEqual(assess_version(None)[0], "Unconfirmed")
@@ -43,6 +43,13 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(found["node"], "DETECTED")
         self.assertEqual(found["version"], "24.22.0")
         self.assertEqual(found["verdict"], "At risk")
+        self.assertEqual(found["decoder_patch_status"], "Unverified remotely")
+
+    def test_fixed_version_header_does_not_confirm_decoder_patch(self):
+        found = fingerprint(response(headers={"x-powered-by": "Node.js/v24.22.1"}), ["example.test"])
+        self.assertEqual(found["verdict"], "Fixed version")
+        self.assertEqual(found["decoder_patch_status"], "Unverified remotely")
+        self.assertIn("selected Brotli decoder", found["verdict_reason"])
 
     def test_express_without_version_stays_unconfirmed(self):
         found = fingerprint(response(headers={"x-powered-by": "Express"}), ["example.test"])
@@ -381,6 +388,14 @@ class GroupingTests(unittest.TestCase):
         self.assertEqual(grouped[0]["verdict"], "Unconfirmed")
         self.assertTrue(grouped[0]["site_conflict"])
         self.assertEqual(grouped[0]["reported_versions"], ["24.22.0", "24.22.1"])
+
+    def test_old_saved_fixed_label_displays_shortened_label(self):
+        asset = {"id": "legacy", "url": "https://example.test/", "http_status": 200,
+                 "node": "DETECTED", "verdict": "Fixed version reported",
+                 "version": "24.22.1", "verdict_reason": "Previously saved result."}
+        shown = grouped_websites([asset])[0]
+        self.assertEqual(shown["verdict"], "Fixed version")
+        self.assertEqual(shown["verdict_reason"], "Previously saved result.")
 
     def test_http_upgrade_and_www_redirect_show_only_https_destination(self):
         assets = [{"id": "http", "url": "http://example.test/",

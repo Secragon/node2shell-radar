@@ -75,6 +75,7 @@ class GuiOptionsTests(unittest.TestCase):
         self.assertEqual(self.window.table.item(0, 3).text(), "Next.js 16.3.3")
         self.assertEqual(self.window.table.item(0, 4).text(), "Parser observed")
         self.assertIn("Brotli", self.window.table.item(0, 4).toolTip())
+        self.assertIn("Unverified remotely", self.window.table.item(0, 5).toolTip())
         for col in range(self.window.table.columnCount()):
             self.assertEqual(self.window.table.item(0, col).textAlignment(),
                              self.window.table.horizontalHeaderItem(col).textAlignment())
@@ -228,6 +229,7 @@ class GuiOptionsTests(unittest.TestCase):
             window.export_button.click()
         exported = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
         self.assertEqual(exported["results"][0]["Address"], asset["url"])
+        self.assertEqual(exported["results"][0]["Decoder patch"], "Unverified remotely")
         self.assertEqual(exported["results"][0]["Active checks"][0]["name"], "Strapi login")
         window.search.setText("absent")
         self.assertEqual(window.visible_result_rows(), [])

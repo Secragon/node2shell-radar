@@ -9,6 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 CVE = "CVE-2026-111497"
+REMOTE_PATCH_STATUS = "Unverified remotely"
 FIXED = {22: (22, 23, 4), 24: (24, 22, 1), 26: (26, 12, 1)}
 WEB_PORTS = (80, 443, 8080, 8443, 8000, 8888, 3000, 5000, 8081, 9000)
 
@@ -117,13 +118,14 @@ def assess_version(version: str | None) -> tuple[str, str]:
     if match.group(4):
         return "Unconfirmed", "A vendor or prerelease build needs package-specific verification."
     fixed = FIXED.get(major)
-    evidence = "HTTP response"
     if fixed:
         if (major, minor, patch) >= fixed:
-            return "Fixed version reported", (f"The {evidence} indicates an upstream fixed Node.js version. "
-                           "A system-linked Brotli library or vendor build still needs package verification.")
-        return "At risk", (f"The {evidence} indicates a Node.js version before the upstream fix. "
-                           "A vendor backport may change its actual patch state.")
+            return "Fixed version", (
+                "The HTTP response reports a Node.js version at or after the upstream fix. "
+                "The serving process and its selected Brotli decoder have not been verified.")
+        return "At risk", (
+            "The HTTP response reports a Node.js version before the upstream fix. "
+            "A vendor backport or different selected decoder may change its actual patch state.")
     if major < 22 or major in (23, 25):
-        return "Unconfirmed", f"The {evidence} indicates an unsupported branch outside the published fix matrix."
-    return "Unconfirmed", f"The {evidence} indicates a branch outside the published fix matrix."
+        return "Unconfirmed", "The HTTP response reports an unsupported branch outside the published fix matrix."
+    return "Unconfirmed", "The HTTP response reports a branch outside the published fix matrix."

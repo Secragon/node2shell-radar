@@ -45,11 +45,11 @@ cannot guarantee every subdomain was found.
 
 | Result | Meaning |
 | --- | --- |
-| **Fixed version reported** | An HTTP response reports an upstream fixed version; confirm that the actual process uses it. |
-| **At risk** | The reported version predates the upstream fix. |
+| **Fixed version** | An HTTP response reports an upstream fixed Node.js version; the serving process and its selected Brotli decoder remain unverified. |
+| **At risk** | The reported Node.js version predates the upstream fix; a vendor backport or different decoder may change the actual patch state. |
 | **Unconfirmed** | The version is missing, conflicting, vendor-specific, or not tied to a confirmed Node.js runtime. |
 
-The upstream fixed releases are **Node.js 22.23.4, 24.22.1 and 26.12.1**. The vulnerable component is the Brotli **decoder**. Serving a Brotli-compressed response does not prove the server accepts or decompresses Brotli request bodies. A site may also be exposed through outbound responses that its Node.js process fetches. Some distribution builds use a system Brotli library, so a fixed Node.js version string alone is not full patch verification. Radar does not send malformed Brotli streams or claim remote code-execution confirmation. [Node.js advisory](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases), [Imperva's validation](https://www.imperva.com/blog/node2shell-from-brotli-data-to-remote-code-execution/), [Express Brotli request parsing](https://expressjs.com/en/guide/migrating-5/), [Debian's system-library note](https://security-tracker.debian.org/tracker/CVE-2026-111497).
+The upstream fixed releases are **Node.js 22.23.4, 24.22.1 and 26.12.1**. The vulnerable component is the Brotli **decoder**. The scanner records its patch status as **Unverified remotely**, independently of the reported Node.js version and active request parsing result. Serving a Brotli-compressed response does not prove the server accepts or decompresses Brotli request bodies. A site may also be exposed through outbound responses that its Node.js process fetches. Some distribution builds use a system Brotli library, so a fixed Node.js version string alone is not full patch verification. Radar does not send malformed Brotli streams or claim remote code-execution confirmation. [Node.js advisory](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases), [Imperva's validation](https://www.imperva.com/blog/node2shell-from-brotli-data-to-remote-code-execution/), [Express Brotli request parsing](https://expressjs.com/en/guide/migrating-5/), [Debian's system-library note](https://security-tracker.debian.org/tracker/CVE-2026-111497).
 
 ## Run from source
 

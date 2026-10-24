@@ -5,7 +5,7 @@ import hashlib
 import re
 from urllib.parse import urljoin, urlsplit
 
-from radar.models import CVE, assess_version, utc_now
+from radar.models import CVE, REMOTE_PATCH_STATUS, assess_version, utc_now
 from radar.site_identity import describe_site
 
 
@@ -282,7 +282,7 @@ def fingerprint(response, scope_hosts=()):
     verdict, reason = assess_version(version)
     if len(versions) > 1:
         verdict, reason = "Unconfirmed", "Conflicting Node.js versions were reported."
-    if node != "DETECTED" and verdict == "Fixed version reported":
+    if node != "DETECTED" and verdict == "Fixed version":
         verdict, reason = "Unconfirmed", "The reported version is not tied to a confirmed Node.js runtime."
     if target != final:
         verdict, reason = "Unconfirmed", "The request redirected outside the assessed site."
@@ -308,4 +308,5 @@ def fingerprint(response, scope_hosts=()):
         "server": response.headers.get("server", "")[:300] if target == final else "",
         "evidence": evidence, "cve": CVE,
         "verdict": verdict, "verdict_reason": reason,
+        "decoder_patch_status": REMOTE_PATCH_STATUS,
     }

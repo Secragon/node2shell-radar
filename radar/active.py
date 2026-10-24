@@ -3,6 +3,7 @@
 import json
 from urllib.parse import urlsplit, urlunsplit
 
+from radar.models import REMOTE_PATCH_STATUS
 from radar.network import Stopped
 
 
@@ -148,18 +149,20 @@ async def check_active_paths(network, url, connect_ip=None, verdict="Unconfirmed
     if status == "Parser observed":
         if verdict == "At risk":
             assessment = ("A pre-fix Node.js version was reported and a Brotli request parser "
-                          "was reached. Verify the actual runtime build and Brotli library.")
-        elif verdict == "Fixed version reported":
-            assessment = ("Brotli request parsing was reached, but the reported Node.js version "
-                          "is upstream-fixed. Verify the actual runtime build and Brotli library.")
+                          "was reached. The selected decoder's patch status is unverified.")
+        elif verdict == "Fixed version":
+            assessment = ("Brotli request parsing was reached and an upstream-fixed Node.js "
+                          "version was reported. The selected decoder's patch status is unverified.")
         else:
             assessment = ("Brotli request parsing was reached. The Node.js runtime version "
-                          "and patch status remain unconfirmed.")
+                          "and selected decoder's patch status remain unconfirmed.")
     elif status == "Rejected here":
         assessment = ("The tested route rejected Brotli requests; other routes and outbound "
-                      "Brotli responses are not covered.")
+                      "Brotli responses are not covered. Decoder patch status is unverified.")
     else:
-        assessment = "The active requests did not establish reachable Brotli parsing."
+        assessment = ("The active requests did not establish reachable Brotli parsing. "
+                      "Decoder patch status is unverified.")
     return {"status": status, "reason": assessment, "assessment": assessment,
+            "decoder_patch_status": REMOTE_PATCH_STATUS,
             "url": strongest.get("url", url), "method": strongest.get("method"),
             "checks": checks}

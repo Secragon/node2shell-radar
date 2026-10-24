@@ -9,7 +9,7 @@ from radar.active import check_active_paths
 from radar.crawl import crawl_pages
 from radar.detection import fingerprint, next_script_urls, next_version_from_script
 from radar.discovery import discover, resolve_details
-from radar.models import Target, endpoints, utc_now
+from radar.models import REMOTE_PATCH_STATUS, Target, endpoints, utc_now
 from radar.network import Network, Stopped, gather_workers
 from radar.site_identity import equivalent_pages
 from radar.tls import inspect_tls
@@ -34,6 +34,7 @@ def pending_asset(url, target, ips=(), source=("input",), connect_ip=None):
             "url": url, "host": target.host, "connect_ip": connect_ip,
             "ips": sorted(ips), "source": sorted(source), "node": "PENDING",
             "verdict": "Unconfirmed", "verdict_reason": "HTTP check pending.",
+            "decoder_patch_status": REMOTE_PATCH_STATUS,
             "evidence": [], "version": None, "error": ""}
 
 

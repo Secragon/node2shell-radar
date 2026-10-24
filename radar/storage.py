@@ -8,6 +8,7 @@ import re
 import sqlite3
 from urllib.parse import urlsplit, urlunsplit
 
+from radar.models import REMOTE_PATCH_STATUS
 from radar.site_identity import equivalent_pages
 
 
@@ -243,7 +244,8 @@ def grouped_websites(assets):
         versions = {version for item in members for version in
                     ([item.get("version")] + list(item.get("reported_versions") or [])) if version}
         verdicts = {item.get("verdict") for item in members}
-        if len(versions) > 1 or ("At risk" in verdicts and "Fixed version reported" in verdicts):
+        fixed_verdicts = {"Fixed version", "Fixed version reported"}
+        if len(versions) > 1 or ("At risk" in verdicts and verdicts & fixed_verdicts):
             shown["version"] = None if len(versions) > 1 else next(iter(versions))
             shown["verdict"] = "Unconfirmed"
             shown["verdict_reason"] = "Different pages reported conflicting Node.js versions or assessments."
@@ -251,11 +253,14 @@ def grouped_websites(assets):
         else:
             shown["version"] = next(iter(versions)) if versions else None
             shown["verdict"] = ("At risk" if "At risk" in verdicts else
-                                "Fixed version reported" if shown["node"] == "DETECTED" and
-                                "Fixed version reported" in verdicts else "Unconfirmed")
-            source = next((item for item in members if item.get("verdict") == shown["verdict"]), None)
+                                "Fixed version" if shown["node"] == "DETECTED" and
+                                verdicts & fixed_verdicts else "Unconfirmed")
+            source = next((item for item in members if item.get("verdict") in
+                           (fixed_verdicts if shown["verdict"] == "Fixed version" else
+                            {shown["verdict"]})), None)
             shown["verdict_reason"] = source.get("verdict_reason", "") if source else ""
         shown["reported_versions"] = sorted(versions)
+        shown["decoder_patch_status"] = REMOTE_PATCH_STATUS
         shown["technologies"] = sorted({name for item in members for name in item.get("technologies", ())})
         technology_versions = {}
         for item in members:
@@ -294,7 +299,7 @@ def export_report(path, run, assets):
         columns = ["url", "site_url", "final_url", "host", "connect_ip", "ips", "source",
                    "http_status", "node", "confidence", "version",
                    "reported_versions", "technologies", "technology_versions", "brotli_response",
-                   "active_check", "verdict",
+                   "active_check", "verdict", "decoder_patch_status",
                    "verdict_reason", "proxy", "error", "evidence", "dns", "crawl"]
         with path.open("w", encoding="utf-8-sig", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=columns)
@@ -316,7 +321,7 @@ def export_report(path, run, assets):
 
 
 RESULT_COLUMNS = ("Address", "HTTP", "Node.js", "Version", "Active check", "Result",
-                  "Active assessment", "Active checks")
+                  "Decoder patch", "Active assessment", "Active checks")
 
 
 def export_visible_results(path, rows):

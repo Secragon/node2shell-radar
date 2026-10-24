@@ -84,6 +84,7 @@ class ActiveProbeTests(unittest.TestCase):
         self.assertEqual(asset["active_check"]["status"], "Parser observed")
         grouped = grouped_websites([asset])[0]
         self.assertEqual(grouped["active_check"]["status"], "Parser observed")
+        self.assertEqual(grouped["decoder_patch_status"], "Unverified remotely")
         self.assertEqual([check["name"] for check in grouped["active_checks"]],
                          ["JSON parser route", "Strapi login"])
         self.assertEqual([request.method for request in requests],
@@ -162,6 +163,7 @@ class ActiveProbeTests(unittest.TestCase):
 
         result = asyncio.run(check())
         self.assertEqual(result["status"], "Parser observed")
+        self.assertEqual(result["decoder_patch_status"], "Unverified remotely")
         self.assertEqual([item["status"] for item in result["checks"]],
                          ["Inconclusive", "Parser observed"])
         self.assertIn("pre-fix", result["assessment"])
