@@ -48,11 +48,11 @@ class Network:
         self.locks = {}
         self.last_request = {}
 
-    async def request(self, method, url, *, limit=131072, follow=True, **kwargs):
+    async def request(self, method, url, *, limit=524288, follow=True, **kwargs):
         async with asyncio.timeout(self.options.timeout * 4):
             return await self._request(method, url, limit=limit, follow=follow, **kwargs)
 
-    async def request_ip(self, method, url, address, *, limit=131072, **kwargs):
+    async def request_ip(self, method, url, address, *, limit=524288, **kwargs):
         # Separate pool avoids reusing a TLS connection for another SNI on a shared IP.
         child = Network(self.options, self.control, self.transport)
         child.locks, child.last_request = self.locks, self.last_request

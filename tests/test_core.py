@@ -502,6 +502,28 @@ class GroupingTests(unittest.TestCase):
 
 
 class EngineTests(unittest.TestCase):
+    def test_framework_marker_after_old_page_limit_is_detected_passively(self):
+        async def fake_discover(options, network, control, emit):
+            return [{"target": Target("example.test", "https://example.test/"),
+                     "source": {"input"}, "ips": {"127.0.0.1"},
+                     "dns": {"ips": ["127.0.0.1"]}}]
+
+        def handler(request):
+            html = "<html>" + "x" * 230000 + "<script>window.__remixContext={}</script></html>"
+            return httpx.Response(200, headers={"content-type": "text/html"}, text=html)
+
+        events = []
+        options = ScanOptions([Target("example.test", "https://example.test/")],
+                              passive_dns=False, active_dns=False, tls_names=False,
+                              words=[], interval=0, active_check=False)
+        with patch("radar.engine.discover", fake_discover):
+            asyncio.run(run_scan(options, Control(), events.append, httpx.MockTransport(handler)))
+        asset = assessed_assets(events)[0]
+        self.assertEqual(asset["node"], "POSSIBLE")
+        self.assertIn("Remix", asset["technologies"])
+        self.assertFalse(asset["detection_partial"])
+        self.assertNotIn("active_check", asset)
+
     def test_unresolved_dns_candidate_is_saved_without_http_request(self):
         async def fake_discover(options, network, control, emit):
             return [{"target": Target("missing.example.test"), "source": {"public source"},
